@@ -1,0 +1,139 @@
+/**
+ * Verbatim API client.
+ *
+ * Talks only to the local Verbatim backend (which in turn talks only to the
+ * local Ollama runtime). No third-party calls. In dev, requests to /api are
+ * proxied to the FastAPI server (see vite.config.ts).
+ */
+
+export const NEEDS_REVIEW = "NEEDS_REVIEW";
+
+export interface CaseInfo {
+  id: string;
+  name: string;
+  documents: string[];
+  char_count: number;
+}
+
+export interface FieldSpec {
+  key: string;
+  label: string;
+  instruction?: string | null;
+  placeholder: string;
+}
+
+export interface TemplateInfo {
+  id: string;
+  name: string;
+  filename: string;
+  kind: string;
+  fields: FieldSpec[];
+  style?: string | null;
+}
+
+export interface FilledField {
+  key: string;
+  label: string;
+  value: string;
+  found: boolean;
+  confidence?: number | null;
+  source_quote?: string | null;
+  source_document?: string | null;
+  admin_flag?: "correct" | "incorrect" | null;
+}
+
+export interface FillResult {
+  run_id: string;
+  timestamp: string;
+  matter_id: string;
+  matter_name: string;
+  template_id: string;
+  template_name: string;
+  style?: string | null;
+  model: string;
+  fields: FilledField[];
+  original_text: string;
+  filled_text: string;
+  inference_seconds: number;
+  blanks_total: number;
+  blanks_filled: number;
+  blanks_needs_review: number;
+  retrieval_mode: string;
+  status: string;
+  message?: string | null;
+}
+
+export interface OllamaModel {
+  name: string;
+  size?: number;
+  family?: string;
+  parameter_size?: string;
+  quantization?: string;
+}
+
+export interface ModelStyleStats {
+  model: string;
+  style: string;
+  runs: number;
+  fields_flagged: number;
+  fields_correct: number;
+  fields_incorrect: number;
+  needs_review_fields: number;
+  total_fields: number;
+  avg_inference_seconds: number;
+}
+
+const BASE = "/api";
+
+async function j<T>(res: Response): Promise<T> {
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`${res.status} ${res.statusText} ${text}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+export const api = {
+  health: () =>
+    fetch(`${BASE}/health`).then(
+      j<{ ok: boolean; ollama_available: boolean; ollama_host: string }>
+    ),
+
+  matters: () => fetch(`${BASE}/matters`).then(j<CaseInfo[]>),
+
+  templates: () => fetch(`${BASE}/templates`).then(j<TemplateInfo[]>),
+
+  models: () =>
+    fetch(`${BASE}/models`).then(
+      j<{ available: boolean; models: OllamaModel[]; message?: string }>
+    ),
+
+  fill: (matter_id: string, template_id: string, model: string) =>
+    fetch(`${BASE}/fill`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ matter_id, template_id, model }),
+    }).then(j<FillResult>),
+
+  runs: () => fetch(`${BASE}/runs`).then(j<FillResult[]>),
+
+  run: (run_id: string) => fetch(`${BASE}/runs/${run_id}`).then(j<FillResult>),
+
+  flag: (run_id: string, field_key: string, flag: "correct" | "incorrect" | null) =>
+    fetch(`${BASE}/runs/${run_id}/flag`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ field_key, flag }),
+    }).then(j<FillResult>),
+
+  setStyle: (template_id: string, style: string) =>
+    fetch(`${BASE}/templates/${template_id}/style`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ style }),
+    }).then(j<TemplateInfo>),
+
+  report: () => fetch(`${BASE}/report`).then(j<ModelStyleStats[]>),
+
+  exportUrl: (run_id: string) => `${BASE}/export/${run_id}`,
+};

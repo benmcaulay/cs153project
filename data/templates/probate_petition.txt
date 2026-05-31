@@ -1,0 +1,25 @@
+IN THE {{court}}
+
+In re the Estate of {{decedent_name}}, Deceased.
+
+PETITION FOR PROBATE OF WILL AND APPOINTMENT OF EXECUTOR
+
+NOW COMES the Petitioner, {{executor_name}}, and respectfully states:
+
+1. {{decedent_name}} (the "Decedent") died on {{date_of_death}} at {{place_of_death}}.
+
+2. At the time of death, the Decedent's last residence was {{decedent_residence}}.
+
+3. The Decedent left a Last Will and Testament dated {{will_date}}, which
+   nominates {{executor_name}} as Executor of the estate.
+
+4. The approximate gross value of the estate is {{estate_value}}.
+
+5. The Petitioner resides at {{executor_address}} and is qualified to serve.
+
+WHEREFORE, Petitioner prays that the Will be admitted to probate and that
+Letters Testamentary be issued to {{executor_name}}.
+
+Respectfully submitted,
+
+{{executor_name}}, Petitioner

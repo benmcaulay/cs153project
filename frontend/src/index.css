@@ -1,0 +1,151 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* LitAI Design System - Steel Blue Legal Theme */
+
+@layer base {
+  :root {
+    --background: 210 20% 98%;
+    --foreground: 210 50% 15%;
+
+    --card: 210 15% 97%;
+    --card-foreground: 210 50% 15%;
+
+    --popover: 210 15% 97%;
+    --popover-foreground: 210 50% 15%;
+
+    --primary: 210 35% 45%;
+    --primary-foreground: 210 20% 98%;
+
+    --secondary: 210 15% 90%;
+    --secondary-foreground: 210 35% 25%;
+
+    --muted: 210 15% 92%;
+    --muted-foreground: 210 25% 45%;
+
+    --accent: 210 25% 85%;
+    --accent-foreground: 210 35% 25%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 20% 98%;
+
+    --border: 210 20% 85%;
+    --input: 210 20% 85%;
+    --ring: 210 35% 45%;
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 210 25% 96%;
+    --sidebar-foreground: 210 35% 25%;
+    --sidebar-primary: 210 35% 45%;
+    --sidebar-primary-foreground: 210 20% 98%;
+    --sidebar-accent: 210 20% 90%;
+    --sidebar-accent-foreground: 210 35% 25%;
+    --sidebar-border: 210 20% 85%;
+    --sidebar-ring: 210 35% 45%;
+
+    /* Custom LitAI colors */
+    --steel-blue-50: 210 25% 95%;
+    --steel-blue-100: 210 25% 90%;
+    --steel-blue-200: 210 25% 80%;
+    --steel-blue-300: 210 25% 70%;
+    --steel-blue-400: 210 30% 55%;
+    --steel-blue-500: 210 35% 45%;
+    --steel-blue-600: 210 40% 35%;
+    --steel-blue-700: 210 45% 25%;
+    --steel-blue-800: 210 50% 18%;
+    --steel-blue-900: 210 55% 12%;
+  }
+
+  .dark {
+    --background: 210 55% 8%;
+    --foreground: 210 20% 95%;
+
+    --card: 210 50% 10%;
+    --card-foreground: 210 20% 95%;
+
+    --popover: 210 50% 10%;
+    --popover-foreground: 210 20% 95%;
+
+    --primary: 210 35% 55%;
+    --primary-foreground: 210 55% 8%;
+
+    --secondary: 210 45% 15%;
+    --secondary-foreground: 210 20% 95%;
+
+    --muted: 210 45% 15%;
+    --muted-foreground: 210 25% 65%;
+
+    --accent: 210 40% 20%;
+    --accent-foreground: 210 20% 95%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 20% 95%;
+
+    --border: 210 40% 20%;
+    --input: 210 40% 20%;
+    --ring: 210 35% 55%;
+
+    --sidebar-background: 210 50% 6%;
+    --sidebar-foreground: 210 20% 95%;
+    --sidebar-primary: 210 35% 55%;
+    --sidebar-primary-foreground: 210 55% 8%;
+    --sidebar-accent: 210 45% 12%;
+    --sidebar-accent-foreground: 210 20% 95%;
+    --sidebar-border: 210 40% 20%;
+    --sidebar-ring: 210 35% 55%;
+
+    /* Dark mode steel blue colors */
+    --steel-blue-50: 210 45% 12%;
+    --steel-blue-100: 210 45% 15%;
+    --steel-blue-200: 210 40% 20%;
+    --steel-blue-300: 210 35% 30%;
+    --steel-blue-400: 210 30% 45%;
+    --steel-blue-500: 210 35% 55%;
+    --steel-blue-600: 210 25% 65%;
+    --steel-blue-700: 210 20% 75%;
+    --steel-blue-800: 210 20% 85%;
+    --steel-blue-900: 210 20% 95%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+  }
+}
+
+/* Custom steel blue utilities */
+@layer utilities {
+  .steel-blue-50 { color: hsl(var(--steel-blue-50)); }
+  .steel-blue-100 { color: hsl(var(--steel-blue-100)); }
+  .steel-blue-200 { color: hsl(var(--steel-blue-200)); }
+  .steel-blue-300 { color: hsl(var(--steel-blue-300)); }
+  .steel-blue-400 { color: hsl(var(--steel-blue-400)); }
+  .steel-blue-500 { color: hsl(var(--steel-blue-500)); }
+  .steel-blue-600 { color: hsl(var(--steel-blue-600)); }
+  .steel-blue-700 { color: hsl(var(--steel-blue-700)); }
+  .steel-blue-800 { color: hsl(var(--steel-blue-800)); }
+  .steel-blue-900 { color: hsl(var(--steel-blue-900)); }
+  
+  .bg-steel-blue-50 { background-color: hsl(var(--steel-blue-50)); }
+  .bg-steel-blue-100 { background-color: hsl(var(--steel-blue-100)); }
+  .bg-steel-blue-200 { background-color: hsl(var(--steel-blue-200)); }
+  .bg-steel-blue-300 { background-color: hsl(var(--steel-blue-300)); }
+  .bg-steel-blue-400 { background-color: hsl(var(--steel-blue-400)); }
+  .bg-steel-blue-500 { background-color: hsl(var(--steel-blue-500)); }
+  .bg-steel-blue-600 { background-color: hsl(var(--steel-blue-600)); }
+  .bg-steel-blue-700 { background-color: hsl(var(--steel-blue-700)); }
+  .bg-steel-blue-800 { background-color: hsl(var(--steel-blue-800)); }
+  .bg-steel-blue-900 { background-color: hsl(var(--steel-blue-900)); }
+
+  .gradient-steel {
+    background: linear-gradient(135deg, hsl(var(--steel-blue-600)) 0%, hsl(var(--steel-blue-400)) 100%);
+  }
+}

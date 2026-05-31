@@ -1,0 +1,116 @@
+"""
+Ingestion and chunking (FR-1, FR-2).
+
+Reads .pdf / .docx / .txt / .md from a per-matter folder and splits each
+document into overlapping text chunks suitable for retrieval. Parsing is
+best-effort: a single unreadable file never aborts a matter.
+"""
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass, field
+from typing import List
+
+SUPPORTED_EXTS = {".pdf", ".docx", ".txt", ".md"}
+
+
+@dataclass
+class Chunk:
+    document: str  # source filename
+    text: str
+    index: int  # chunk index within the document
+
+
+@dataclass
+class IngestedDoc:
+    filename: str
+    text: str
+    chunks: List[Chunk] = field(default_factory=list)
+
+
+def _read_txt(path: str) -> str:
+    with open(path, "r", encoding="utf-8", errors="replace") as fh:
+        return fh.read()
+
+
+def _read_docx(path: str) -> str:
+    from docx import Document  # python-docx
+
+    doc = Document(path)
+    parts: List[str] = [p.text for p in doc.paragraphs]
+    # include table cell text, which legal docs use heavily
+    for table in doc.tables:
+        for row in table.rows:
+            parts.append("\t".join(cell.text for cell in row.cells))
+    return "\n".join(parts)
+
+
+def _read_pdf(path: str) -> str:
+    from pypdf import PdfReader
+
+    reader = PdfReader(path)
+    return "\n".join((page.extract_text() or "") for page in reader.pages)
+
+
+def read_document(path: str) -> str:
+    ext = os.path.splitext(path)[1].lower()
+    if ext == ".pdf":
+        return _read_pdf(path)
+    if ext == ".docx":
+        return _read_docx(path)
+    if ext in (".txt", ".md"):
+        return _read_txt(path)
+    raise ValueError(f"unsupported extension: {ext}")
+
+
+def chunk_text(text: str, document: str, size: int = 1100, overlap: int = 200) -> List[Chunk]:
+    """Split into overlapping character windows, preferring paragraph breaks."""
+    text = text.strip()
+    if not text:
+        return []
+    chunks: List[Chunk] = []
+    start = 0
+    idx = 0
+    n = len(text)
+    while start < n:
+        end = min(start + size, n)
+        # try to end on a paragraph or sentence boundary for cleaner passages
+        if end < n:
+            window = text[start:end]
+            for sep in ("\n\n", "\n", ". "):
+                cut = window.rfind(sep)
+                if cut > size * 0.5:
+                    end = start + cut + len(sep)
+                    break
+        chunks.append(Chunk(document=document, text=text[start:end].strip(), index=idx))
+        idx += 1
+        if end >= n:
+            break
+        start = max(end - overlap, start + 1)
+    return [c for c in chunks if c.text]
+
+
+def ingest_folder(folder: str) -> List[IngestedDoc]:
+    """Ingest every supported document in a matter folder (non-recursive + 1 level)."""
+    docs: List[IngestedDoc] = []
+    if not os.path.isdir(folder):
+        return docs
+    for root, _dirs, files in os.walk(folder):
+        for name in sorted(files):
+            ext = os.path.splitext(name)[1].lower()
+            if ext not in SUPPORTED_EXTS:
+                continue
+            path = os.path.join(root, name)
+            try:
+                text = read_document(path)
+            except Exception as exc:  # best-effort; skip unreadable files
+                text = ""
+                print(f"[ingest] could not read {name}: {exc}")
+            rel = os.path.relpath(path, folder)
+            doc = IngestedDoc(filename=rel, text=text, chunks=chunk_text(text, rel))
+            docs.append(doc)
+    return docs
+
+
+def total_chars(docs: List[IngestedDoc]) -> int:
+    return sum(len(d.text) for d in docs)
