@@ -82,7 +82,13 @@ const AttorneyWorkspace = () => {
     try {
       const r = await api.fill(matterId, templateId, model);
       setResult(r);
-      if (r.status === "model_unreachable") {
+      if (r.status === "model_timeout") {
+        toast({
+          title: "Model timed out",
+          description: r.message ?? "The model did not respond in time.",
+          variant: "destructive",
+        });
+      } else if (r.status === "model_unreachable") {
         toast({
           title: "Model runtime unreachable",
           description:
@@ -292,6 +298,23 @@ const Metric = ({
 const ResultView = ({ result }: { result: FillResult }) => {
   return (
     <>
+      {/* Why everything is for review, when inference didn't complete */}
+      {result.status !== "ok" && (
+        <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+          <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+          <div>
+            <span className="font-semibold">
+              {result.status === "model_timeout"
+                ? "Inference timed out — no values were transcribed."
+                : result.status === "model_unreachable"
+                ? "Model runtime unavailable — no values were transcribed."
+                : "Inference did not complete."}
+            </span>
+            {result.message && <div className="mt-0.5">{result.message}</div>}
+          </div>
+        </div>
+      )}
+
       {/* Summary metrics (§10.2) */}
       <Card className="bg-card border-border">
         <CardHeader className="pb-3">

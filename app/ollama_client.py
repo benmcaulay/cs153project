@@ -17,11 +17,24 @@ import requests
 
 # Local host only. Configurable for an internal GPU server, but never a 3rd party.
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
-DEFAULT_TIMEOUT = float(os.environ.get("VERBATIM_OLLAMA_TIMEOUT", "120"))
+# Generation can be slow on the first call (the model loads into memory) and on
+# larger models / CPU-bound machines. Generous default; override as needed.
+DEFAULT_TIMEOUT = float(os.environ.get("VERBATIM_OLLAMA_TIMEOUT", "300"))
 
 
 class OllamaUnavailable(RuntimeError):
-    """Raised when the local model runtime cannot be reached."""
+    """Raised when a call to the local model runtime fails.
+
+    `kind` distinguishes the failure mode so the caller can report it precisely:
+      - "timeout"    : the model did not respond within the timeout
+      - "connection" : the runtime could not be reached at all
+      - "http"       : the runtime returned an error status
+      - "error"      : any other request failure
+    """
+
+    def __init__(self, message: str, kind: str = "error"):
+        super().__init__(message)
+        self.kind = kind
 
 
 def _url(path: str) -> str:
@@ -113,8 +126,29 @@ def generate_json(
         r = requests.post(_url("/api/generate"), json=payload, timeout=DEFAULT_TIMEOUT)
         r.raise_for_status()
         body = r.json()
+    except requests.Timeout:
+        raise OllamaUnavailable(
+            f"model '{model}' did not respond within {DEFAULT_TIMEOUT:.0f}s. "
+            f"The model may be too large for this machine, or still loading on "
+            f"its first call. Try a smaller model, or raise VERBATIM_OLLAMA_TIMEOUT.",
+            kind="timeout",
+        )
+    except requests.ConnectionError:
+        raise OllamaUnavailable(
+            f"could not connect to the Ollama runtime at {OLLAMA_HOST}", kind="connection"
+        )
+    except requests.HTTPError as exc:
+        detail = ""
+        try:
+            detail = r.text[:300]
+        except Exception:
+            pass
+        raise OllamaUnavailable(
+            f"the runtime returned an error for model '{model}': {exc}. {detail}".strip(),
+            kind="http",
+        )
     except requests.RequestException as exc:
-        raise OllamaUnavailable(str(exc))
+        raise OllamaUnavailable(str(exc), kind="error")
     elapsed = time.perf_counter() - start
 
     raw = body.get("response", "").strip()

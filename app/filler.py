@@ -115,8 +115,10 @@ def fill(
         run.inference_seconds = round(elapsed, 3)
     except ollama_client.OllamaUnavailable as exc:
         # Degrade gracefully (NFR-3): mark everything for review, never crash.
-        run.status = "model_unreachable"
-        run.message = f"Local model runtime unreachable: {exc}"
+        kind = getattr(exc, "kind", "error")
+        run.status = "model_timeout" if kind == "timeout" else "model_unreachable"
+        run.message = str(exc)
+        print(f"[fill] inference failed (kind={kind}) model={model}: {exc}")
         run.fields = [
             FilledField(key=f.key, label=f.label, value=NEEDS_REVIEW, found=False)
             for f in template.fields
