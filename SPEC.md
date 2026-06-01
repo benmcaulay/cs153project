@@ -2,7 +2,8 @@
 
 **Project:** Verbatim — A Privacy-Preserving, Self-Hosted Legal Template Assistant
 **Course:** CS 153
-**Document status:** Draft v0.1 (living document)
+**Document status:** Draft v0.2 (living document — `main` now integrates the
+Verbatim app and the blank-detection design notes in `docs/blank-detection.md`)
 **Classification:** Internal / academic prototype
 
 ---
@@ -133,6 +134,32 @@ API bound to `localhost`.
   `{{key | instruction}}`.
 - **FR-5.** The system shall derive a human-readable label for each blank and
   shall present each template's blank count to the attorney before a fill.
+
+FR-4 and FR-5 are **implemented** today (`app/templates.py`). However, the four
+real firm templates evaluated to date (Allstate/Depo SUR letters, Affidavit of
+Heirs, Caption) use **none** of this markup and therefore detect as zero blanks.
+Real templates mark blanks with underscore runs, yellow highlighting, bracketed
+spans, `[  ]` checkboxes, ALL-CAPS sentinels (`NAME`, `XXX`), `label :` pairs,
+empty table cells, and inline instructions. The following requirements close
+that gap; the full taxonomy, evidence, and proposed schema are in
+`docs/blank-detection.md`.
+
+- **FR-5.1 (Multi-convention detection — designed, not implemented).** Verbatim
+  shall additionally detect the blank conventions real templates use, via a
+  three-tier strategy: (i) deterministic heuristics for unambiguous physical
+  signals (underscores, brackets, checkboxes, highlight runs, `label :`, empty
+  table cells); (ii) LLM inference for semantic cases (sentinels, inline
+  instructions, choice prompts); (iii) canonical `{{key}}` as the stored format.
+- **FR-5.2 (OOXML-level docx parsing — designed, not implemented).** `.docx`
+  templates shall be parsed at the OOXML run level so formatting signals —
+  notably `w:highlight`, the firm's strongest intentional "fill me" marker — are
+  preserved for detection. The current `read_template_text` flattens docx to
+  plain text and discards them.
+- **FR-5.3 (Normalize-at-import review — designed, not implemented).** Detection
+  shall run **once at template import**, producing a canonical `{{key}}` template
+  that a human reviews and approves before use. This converts heterogeneous
+  source markup into one stored format and reduces the bar from "model must be
+  perfect" to "model must produce a good, auditable first draft."
 
 ### 6.3 Filling
 - **FR-6.** For a selected (matter, template, model) triple, the system shall
@@ -340,6 +367,10 @@ size is sufficient for *which* class of legal document.
 - Confidence scores are model self-reports and are advisory only.
 - The prototype lacks authentication and must not be exposed beyond a trusted
   local host as-is.
+- Blank detection currently recognizes only `{{}}`/`[[]]` markup, which real
+  firm templates do not use; templates lacking explicit markup detect zero
+  blanks until the multi-convention detector (FR-5.1–5.3,
+  `docs/blank-detection.md`) is implemented.
 
 ---
 
@@ -350,6 +381,7 @@ size is sufficient for *which* class of legal document.
 | M1 | Local pipeline: ingest → retrieve → fill → provenance | Implemented (prototype) |
 | M2 | Attorney Workspace + Developer Console | Implemented (prototype) |
 | M3 | `.docx` export | Implemented (prototype) |
+| M3.5 | Multi-convention blank detection + import normalization (FR-5.1–5.3) | Designed (`docs/blank-detection.md`), not yet implemented |
 | M4 | Evaluation run across multiple models on demo hardware | Pending models + data |
 | M5 | Authentication / RBAC, encryption at rest | Future work |
 | M6 | DMS integration adapter (one target) | Future work |
