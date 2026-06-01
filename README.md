@@ -60,6 +60,7 @@ template ({{blanks}} / [[blanks]]) ─┘                          │
 | `ingest.py` | Read pdf/docx/txt/md, overlapping chunking | FR-1, FR-2 |
 | `retrieval.py` | Dense (Ollama embeddings) retrieval with pure-Python TF-IDF fallback | FR-3 |
 | `templates.py` | Detect `{{key}}` / `[[key]]` / `{{key \| instruction}}`, labels, fill | FR-4, FR-5 |
+| `blank_detect.py` | Tier-2 detection of real-world blank conventions (underscores, brackets, checkboxes, `XXX`, highlighted runs, empty table grids) → normalize to canonical markup | FR-5.1, FR-5.2 |
 | `ollama_client.py` | Local-only runtime client; model list, JSON-mode generation, graceful degradation | FR-11, NFR-1/2/3 |
 | `filler.py` | Orchestrate fill, provenance validation, anti-hallucination | FR-6/7/8 |
 | `export.py` | `.docx` export with provenance appendix + review notice | FR-10 |
