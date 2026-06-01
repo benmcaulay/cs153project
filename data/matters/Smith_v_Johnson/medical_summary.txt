@@ -1,0 +1,17 @@
+MEDICAL SUMMARY — CONFIDENTIAL (contains PHI)
+
+Patient: Margaret A. Smith
+Treating facility: Riverton General Hospital
+Date of admission: January 14, 2024
+
+Diagnoses: (1) closed fracture of the left tibia; (2) mild concussion;
+(3) multiple contusions to the left hip and shoulder.
+
+Treatment: Closed reduction and casting of the left tibia on January 15, 2024.
+Patient discharged January 17, 2024 with instructions for follow-up physical
+therapy twice weekly for eight weeks.
+
+Total medical expenses to date: $42,350.00.
+Anticipated future physical therapy costs: $6,200.00.
+
+Prognosis: Full recovery expected within six months with continued therapy.
