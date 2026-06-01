@@ -2,10 +2,26 @@ import { useEffect, useState } from "react";
 import Header from "@/components/Header";
 import AttorneyWorkspace from "@/components/AttorneyWorkspace";
 import DeveloperConsole from "@/components/DeveloperConsole";
-import { Scale, Wrench, ShieldCheck, ShieldOff } from "lucide-react";
+import Library from "@/components/Library";
+import { Scale, Wrench, FolderUp, ShieldCheck, ShieldOff } from "lucide-react";
 import { api } from "@/api/client";
 
-type Surface = "attorney" | "developer";
+type Surface = "attorney" | "library" | "developer";
+
+const SURFACE_TITLE: Record<Surface, string> = {
+  attorney: "Attorney Workspace",
+  library: "Library",
+  developer: "Developer Console",
+};
+
+const SURFACE_BLURB: Record<Surface, string> = {
+  attorney:
+    "Transcribe facts from a matter's case file into a firm template — grounded, provenance-backed, and private.",
+  library:
+    "Upload case documents into a matter and add firm templates. Nothing leaves this host.",
+  developer:
+    "Manage local models, assign template styles, and measure which model fits each document class.",
+};
 
 const Index = () => {
   const [surface, setSurface] = useState<Surface>("attorney");
@@ -18,32 +34,26 @@ const Index = () => {
       .catch(() => setOllamaUp(false));
   }, []);
 
+  const tabBtn = (key: Surface, icon: React.ReactNode, label: string) => (
+    <button
+      onClick={() => setSurface(key)}
+      className={
+        "flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors " +
+        (surface === key
+          ? "bg-primary text-primary-foreground"
+          : "text-muted-foreground hover:text-foreground")
+      }
+    >
+      {icon}
+      <span className="hidden sm:inline">{label}</span>
+    </button>
+  );
+
   const SurfaceToggle = (
     <div className="flex items-center rounded-lg border border-border bg-muted/40 p-1">
-      <button
-        onClick={() => setSurface("attorney")}
-        className={
-          "flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors " +
-          (surface === "attorney"
-            ? "bg-primary text-primary-foreground"
-            : "text-muted-foreground hover:text-foreground")
-        }
-      >
-        <Scale className="h-4 w-4" />
-        <span className="hidden sm:inline">Attorney Workspace</span>
-      </button>
-      <button
-        onClick={() => setSurface("developer")}
-        className={
-          "flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors " +
-          (surface === "developer"
-            ? "bg-primary text-primary-foreground"
-            : "text-muted-foreground hover:text-foreground")
-        }
-      >
-        <Wrench className="h-4 w-4" />
-        <span className="hidden sm:inline">Developer Console</span>
-      </button>
+      {tabBtn("attorney", <Scale className="h-4 w-4" />, "Attorney Workspace")}
+      {tabBtn("library", <FolderUp className="h-4 w-4" />, "Library")}
+      {tabBtn("developer", <Wrench className="h-4 w-4" />, "Developer Console")}
     </div>
   );
 
@@ -55,12 +65,10 @@ const Index = () => {
         <div className="mb-8 flex items-start justify-between gap-4">
           <div>
             <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-2">
-              {surface === "attorney" ? "Attorney Workspace" : "Developer Console"}
+              {SURFACE_TITLE[surface]}
             </h1>
             <p className="text-muted-foreground text-base md:text-lg max-w-2xl">
-              {surface === "attorney"
-                ? "Transcribe facts from a matter's case file into a firm template — grounded, provenance-backed, and private."
-                : "Manage local models, assign template styles, and measure which model fits each document class."}
+              {SURFACE_BLURB[surface]}
             </p>
           </div>
           {ollamaUp !== null && (
@@ -82,7 +90,9 @@ const Index = () => {
           )}
         </div>
 
-        {surface === "attorney" ? <AttorneyWorkspace /> : <DeveloperConsole />}
+        {surface === "attorney" && <AttorneyWorkspace />}
+        {surface === "library" && <Library />}
+        {surface === "developer" && <DeveloperConsole />}
       </div>
     </div>
   );

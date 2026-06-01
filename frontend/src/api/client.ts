@@ -136,4 +136,44 @@ export const api = {
   report: () => fetch(`${BASE}/report`).then(j<ModelStyleStats[]>),
 
   exportUrl: (run_id: string) => `${BASE}/export/${run_id}`,
+
+  // ---- Library: uploads & management ----
+  createMatter: (name: string) =>
+    fetch(`${BASE}/matters`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    }).then(j<CaseInfo>),
+
+  uploadDocuments: (matter_id: string, files: FileList | File[]) => {
+    const fd = new FormData();
+    Array.from(files).forEach((f) => fd.append("files", f));
+    return fetch(`${BASE}/matters/${matter_id}/documents`, {
+      method: "POST",
+      body: fd,
+    }).then(j<CaseInfo>);
+  },
+
+  deleteDocument: (matter_id: string, filename: string) =>
+    fetch(`${BASE}/matters/${matter_id}/documents/${encodeURIComponent(filename)}`, {
+      method: "DELETE",
+    }).then(j<CaseInfo>),
+
+  deleteMatter: (matter_id: string) =>
+    fetch(`${BASE}/matters/${matter_id}`, { method: "DELETE" }).then(
+      j<{ ok: boolean }>
+    ),
+
+  uploadTemplate: (file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return fetch(`${BASE}/templates`, { method: "POST", body: fd }).then(
+      j<TemplateInfo>
+    );
+  },
+
+  deleteTemplate: (template_id: string) =>
+    fetch(`${BASE}/templates/${template_id}`, { method: "DELETE" }).then(
+      j<{ ok: boolean }>
+    ),
 };

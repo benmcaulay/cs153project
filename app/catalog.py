@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 from typing import List, Optional
 
 from .ingest import SUPPORTED_EXTS, ingest_folder, total_chars
@@ -21,6 +22,25 @@ TEMPLATE_EXTS = {".docx", ".txt", ".md"}
 
 def _stable_id(text: str) -> str:
     return hashlib.sha1(text.encode("utf-8")).hexdigest()[:10]
+
+
+# --------------------------------------------------------------------------- #
+# Filename / folder sanitization (no path traversal, predictable names)
+# --------------------------------------------------------------------------- #
+def safe_filename(name: str) -> str:
+    """Reduce an uploaded filename to a safe basename."""
+    name = os.path.basename(name or "").strip().replace(" ", "_")
+    name = re.sub(r"[^A-Za-z0-9._-]", "", name)
+    name = name.lstrip(".") or "file"
+    return name
+
+
+def safe_matter_folder(name: str) -> str:
+    """Derive a safe matter folder name from a display name."""
+    name = (name or "").strip()
+    name = re.sub(r"[^A-Za-z0-9._ -]", "", name).strip()
+    name = re.sub(r"\s+", "_", name)
+    return name or "Untitled_Matter"
 
 
 # --------------------------------------------------------------------------- #
@@ -110,3 +130,73 @@ def get_template(template_id: str) -> Optional[TemplateInfo]:
     if not path:
         return None
     return _build_template_info(os.path.basename(path))
+
+
+# --------------------------------------------------------------------------- #
+# Write operations: create matters, upload case documents and templates (FR-1)
+# --------------------------------------------------------------------------- #
+class CatalogError(ValueError):
+    """Raised on an invalid upload (unsupported type, name clash, etc.)."""
+
+
+def create_matter(name: str) -> CaseInfo:
+    """Create a new (empty) matter folder. Idempotent on an existing name."""
+    folder_name = safe_matter_folder(name)
+    folder = os.path.join(MATTERS_DIR, folder_name)
+    os.makedirs(folder, exist_ok=True)
+    return CaseInfo(id=_stable_id(folder_name), name=folder_name.replace("_", " "), documents=[])
+
+
+def add_document(matter_id: str, filename: str, data: bytes) -> CaseInfo:
+    """Save an uploaded case document into a matter folder (FR-1)."""
+    folder = matter_folder(matter_id)
+    if folder is None:
+        raise CatalogError("Matter not found")
+    fname = safe_filename(filename)
+    if os.path.splitext(fname)[1].lower() not in SUPPORTED_EXTS:
+        raise CatalogError(
+            f"Unsupported document type. Allowed: {', '.join(sorted(SUPPORTED_EXTS))}"
+        )
+    with open(os.path.join(folder, fname), "wb") as fh:
+        fh.write(data)
+    return get_matter(matter_id)  # refreshed, with char count
+
+
+def delete_document(matter_id: str, filename: str) -> CaseInfo:
+    folder = matter_folder(matter_id)
+    if folder is None:
+        raise CatalogError("Matter not found")
+    path = os.path.join(folder, safe_filename(filename))
+    if os.path.isfile(path):
+        os.remove(path)
+    return get_matter(matter_id)
+
+
+def delete_matter(matter_id: str) -> None:
+    import shutil
+
+    folder = matter_folder(matter_id)
+    if folder is None:
+        raise CatalogError("Matter not found")
+    shutil.rmtree(folder, ignore_errors=True)
+
+
+def add_template(filename: str, data: bytes) -> TemplateInfo:
+    """Save an uploaded firm template (FR-4 parsing happens on read)."""
+    os.makedirs(TEMPLATES_DIR, exist_ok=True)
+    fname = safe_filename(filename)
+    if os.path.splitext(fname)[1].lower() not in TEMPLATE_EXTS:
+        raise CatalogError(
+            f"Unsupported template type. Allowed: {', '.join(sorted(TEMPLATE_EXTS))}"
+        )
+    with open(os.path.join(TEMPLATES_DIR, fname), "wb") as fh:
+        fh.write(data)
+    return _build_template_info(fname)
+
+
+def delete_template(template_id: str) -> None:
+    path = template_path(template_id)
+    if path is None:
+        raise CatalogError("Template not found")
+    if os.path.isfile(path):
+        os.remove(path)

@@ -13,7 +13,7 @@ from __future__ import annotations
 import os
 from typing import List, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
@@ -167,6 +167,77 @@ def post_style(template_id: str, req: StyleRequest):
 @app.get("/api/report", response_model=List[ModelStyleStats])
 def get_report():
     return reporting.model_style_report()
+
+
+# --------------------------------------------------------------------------- #
+# Library: upload case documents and firm templates (FR-1, FR-4)
+# --------------------------------------------------------------------------- #
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 MB per file
+
+
+class CreateMatterRequest(BaseModel):
+    name: str
+
+
+@app.post("/api/matters", response_model=CaseInfo)
+def create_matter(req: CreateMatterRequest):
+    name = (req.name or "").strip()
+    if not name:
+        raise HTTPException(400, "Matter name is required")
+    return catalog.create_matter(name)
+
+
+@app.post("/api/matters/{matter_id}/documents", response_model=CaseInfo)
+async def upload_documents(matter_id: str, files: List[UploadFile] = File(...)):
+    info = None
+    for f in files:
+        data = await f.read()
+        if len(data) > MAX_UPLOAD_BYTES:
+            raise HTTPException(413, f"{f.filename} exceeds the 25 MB upload limit")
+        try:
+            info = catalog.add_document(matter_id, f.filename or "file", data)
+        except catalog.CatalogError as exc:
+            raise HTTPException(400, str(exc))
+    if info is None:
+        raise HTTPException(400, "No files were uploaded")
+    return info
+
+
+@app.delete("/api/matters/{matter_id}/documents/{filename}", response_model=CaseInfo)
+def remove_document(matter_id: str, filename: str):
+    try:
+        return catalog.delete_document(matter_id, filename)
+    except catalog.CatalogError as exc:
+        raise HTTPException(404, str(exc))
+
+
+@app.delete("/api/matters/{matter_id}")
+def remove_matter(matter_id: str):
+    try:
+        catalog.delete_matter(matter_id)
+    except catalog.CatalogError as exc:
+        raise HTTPException(404, str(exc))
+    return {"ok": True}
+
+
+@app.post("/api/templates", response_model=TemplateInfo)
+async def upload_template(file: UploadFile = File(...)):
+    data = await file.read()
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, "Template exceeds the 25 MB upload limit")
+    try:
+        return catalog.add_template(file.filename or "template.md", data)
+    except catalog.CatalogError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.delete("/api/templates/{template_id}")
+def remove_template(template_id: str):
+    try:
+        catalog.delete_template(template_id)
+    except catalog.CatalogError as exc:
+        raise HTTPException(404, str(exc))
+    return {"ok": True}
 
 
 # --------------------------------------------------------------------------- #
