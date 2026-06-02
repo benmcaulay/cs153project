@@ -102,6 +102,15 @@ will OCR them automatically if Tesseract + poppler are installed:
 Without them, scanned documents extract no text and the fill diagnostic flags
 them. Disable OCR entirely with `VERBATIM_OCR=0`.
 
+If you'd rather not edit PATH (handy on Windows), point Verbatim straight at the
+binaries — the poppler bin is the nested `Library\bin` folder of the release:
+
+```powershell
+$env:VERBATIM_TESSERACT_CMD = "C:\Program Files\Tesseract-OCR\tesseract.exe"
+$env:VERBATIM_POPPLER_PATH  = "C:\poppler-24.08.0\Library\bin"
+./run.sh
+```
+
 ### 2. Local model (for real fills)
 
 Install [Ollama](https://ollama.com) and pull a demo-sized model:

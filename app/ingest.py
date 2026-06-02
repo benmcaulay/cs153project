@@ -62,6 +62,16 @@ def _read_pdf(path: str) -> str:
 OCR_MIN_CHARS = 40  # below this a PDF is treated as scanned and OCR is attempted
 OCR_DPI = int(os.environ.get("VERBATIM_OCR_DPI", "200"))
 _OCR_ENABLED = os.environ.get("VERBATIM_OCR", "1") != "0"
+# Optional explicit binary locations, so a Windows host needn't edit PATH:
+#   VERBATIM_TESSERACT_CMD = C:\Program Files\Tesseract-OCR\tesseract.exe
+#   VERBATIM_POPPLER_PATH  = C:\poppler-24.08.0\Library\bin
+_TESSERACT_CMD = os.environ.get("VERBATIM_TESSERACT_CMD")
+_POPPLER_PATH = os.environ.get("VERBATIM_POPPLER_PATH")
+
+
+def _configure_tesseract(pytesseract) -> None:
+    if _TESSERACT_CMD:
+        pytesseract.pytesseract.tesseract_cmd = _TESSERACT_CMD
 
 
 def ocr_available() -> bool:
@@ -69,12 +79,11 @@ def ocr_available() -> bool:
     if not _OCR_ENABLED:
         return False
     try:
-        import pytesseract  # noqa: F401
+        import pytesseract
         from pdf2image import convert_from_path  # noqa: F401
 
-        import pytesseract as _pt
-
-        _pt.get_tesseract_version()
+        _configure_tesseract(pytesseract)
+        pytesseract.get_tesseract_version()
         return True
     except Exception:
         return False
@@ -88,10 +97,17 @@ def ocr_pdf(path: str) -> str:
     except Exception as exc:
         print(f"[ingest] OCR libraries unavailable ({exc}); install pytesseract + pdf2image.")
         return ""
+    _configure_tesseract(pytesseract)
+    kwargs = {"dpi": OCR_DPI}
+    if _POPPLER_PATH:
+        kwargs["poppler_path"] = _POPPLER_PATH
     try:
-        images = convert_from_path(path, dpi=OCR_DPI)
+        images = convert_from_path(path, **kwargs)
     except Exception as exc:
-        print(f"[ingest] could not rasterize {path} for OCR ({exc}); is poppler installed?")
+        print(
+            f"[ingest] could not rasterize {path} for OCR ({exc}); is poppler installed / "
+            f"VERBATIM_POPPLER_PATH set to its bin folder?"
+        )
         return ""
     pages: List[str] = []
     for img in images:

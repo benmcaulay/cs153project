@@ -5,6 +5,9 @@ its output is preferred) with ocr_pdf monkeypatched — no binaries required.
 """
 from __future__ import annotations
 
+import sys
+import types
+
 from app import ingest
 
 
@@ -42,3 +45,23 @@ def test_ocr_pdf_degrades_gracefully_without_libs(monkeypatch):
     monkeypatch.setattr(builtins, "__import__", fake_import)
     assert ingest.ocr_pdf("anything.pdf") == ""
     assert ingest.ocr_available() is False
+
+
+def test_explicit_binary_paths_are_forwarded(monkeypatch):
+    # On Windows, users point at the binaries instead of editing PATH.
+    captured = {}
+    fake_pdf2image = types.ModuleType("pdf2image")
+    fake_pdf2image.convert_from_path = lambda path, **kw: (captured.update(kw) or ["page-image"])
+    fake_pyt = types.ModuleType("pytesseract")
+    fake_pyt.pytesseract = types.SimpleNamespace(tesseract_cmd=None)
+    fake_pyt.image_to_string = lambda img: "OCR PAGE TEXT"
+
+    monkeypatch.setitem(sys.modules, "pdf2image", fake_pdf2image)
+    monkeypatch.setitem(sys.modules, "pytesseract", fake_pyt)
+    monkeypatch.setattr(ingest, "_POPPLER_PATH", r"C:\poppler\Library\bin")
+    monkeypatch.setattr(ingest, "_TESSERACT_CMD", r"C:\Tesseract-OCR\tesseract.exe")
+
+    out = ingest.ocr_pdf("scan.pdf")
+    assert out == "OCR PAGE TEXT"
+    assert captured.get("poppler_path") == r"C:\poppler\Library\bin"
+    assert fake_pyt.pytesseract.tesseract_cmd == r"C:\Tesseract-OCR\tesseract.exe"
