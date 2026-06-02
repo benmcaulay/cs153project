@@ -29,87 +29,36 @@ import {
   Quote,
   ShieldAlert,
   Info,
+  X,
 } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
-import {
-  api,
-  CaseInfo,
-  TemplateInfo,
-  OllamaModel,
-  FillResult,
-} from "@/api/client";
+import { api, TemplateInfo, FillResult } from "@/api/client";
 import FilledDocument from "@/components/FilledDocument";
+import { useFill } from "@/components/FillContext";
 
 const AttorneyWorkspace = () => {
-  const { toast } = useToast();
-  const [matters, setMatters] = useState<CaseInfo[]>([]);
-  const [templates, setTemplates] = useState<TemplateInfo[]>([]);
-  const [models, setModels] = useState<OllamaModel[]>([]);
-  const [modelsAvailable, setModelsAvailable] = useState(true);
+  const {
+    matters,
+    templates,
+    models,
+    modelsAvailable,
+    matterId,
+    templateId,
+    model,
+    setMatterId,
+    setTemplateId,
+    setModel,
+    filling,
+    elapsedMs,
+    result,
+    runFill,
+    cancel,
+  } = useFill();
 
-  const [matterId, setMatterId] = useState("");
-  const [templateId, setTemplateId] = useState("");
-  const [model, setModel] = useState("");
-
-  const [filling, setFilling] = useState(false);
-  const [result, setResult] = useState<FillResult | null>(null);
-
-  useEffect(() => {
-    api.matters().then(setMatters).catch(() => setMatters([]));
-    api.templates().then(setTemplates).catch(() => setTemplates([]));
-    api
-      .models()
-      .then((r) => {
-        setModels(r.models);
-        setModelsAvailable(r.available);
-        if (r.available && r.models[0]) setModel(r.models[0].name);
-      })
-      .catch(() => setModelsAvailable(false));
-  }, []);
-
+  // Embedding models (e.g. nomic-embed-text) power retrieval but cannot generate
+  // text — keep them out of the generation-model picker.
+  const genModels = models.filter((m) => !m.embedding);
   const template = templates.find((t) => t.id === templateId);
-
-  const handleFill = async () => {
-    if (!matterId || !templateId || !model) {
-      toast({
-        title: "Three selections required",
-        description: "Choose a matter, a template, and a model.",
-        variant: "destructive",
-      });
-      return;
-    }
-    setFilling(true);
-    setResult(null);
-    try {
-      const r = await api.fill(matterId, templateId, model);
-      setResult(r);
-      if (r.status === "model_timeout") {
-        toast({
-          title: "Model timed out",
-          description: r.message ?? "The model did not respond in time.",
-          variant: "destructive",
-        });
-      } else if (r.status === "model_unreachable") {
-        toast({
-          title: "Model runtime unreachable",
-          description:
-            "Every field is marked for review. Start Ollama on the local host and try again.",
-          variant: "destructive",
-        });
-      } else if (r.status !== "ok") {
-        toast({ title: "Fill incomplete", description: r.message ?? "", variant: "destructive" });
-      } else {
-        toast({
-          title: "Fill complete",
-          description: `${r.blanks_filled} filled · ${r.blanks_needs_review} need review.`,
-        });
-      }
-    } catch (e: any) {
-      toast({ title: "Fill failed", description: String(e.message ?? e), variant: "destructive" });
-    } finally {
-      setFilling(false);
-    }
-  };
+  const elapsedLabel = `${(elapsedMs / 1000).toFixed(1)}s`;
 
   return (
     <div className="space-y-6">
@@ -193,13 +142,13 @@ const AttorneyWorkspace = () => {
               <label className="block text-sm font-medium text-muted-foreground mb-2">
                 Local model
               </label>
-              {modelsAvailable && models.length > 0 ? (
+              {modelsAvailable && genModels.length > 0 ? (
                 <Select value={model} onValueChange={setModel}>
                   <SelectTrigger className="border-border">
                     <SelectValue placeholder="Choose a model" />
                   </SelectTrigger>
                   <SelectContent>
-                    {models.map((m) => (
+                    {genModels.map((m) => (
                       <SelectItem key={m.name} value={m.name}>
                         <div className="flex items-center gap-2">
                           <Cpu className="h-4 w-4 text-muted-foreground" />
@@ -240,23 +189,37 @@ const AttorneyWorkspace = () => {
             </div>
           )}
 
-          <Button
-            onClick={handleFill}
-            disabled={filling || !matterId || !templateId || !model}
-            className="w-full bg-primary hover:bg-primary/90"
-          >
-            {filling ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Filling…
-              </>
-            ) : (
-              <>
-                <Wand2 className="mr-2 h-4 w-4" />
-                Fill
-              </>
+          <div className="flex gap-2">
+            <Button
+              onClick={runFill}
+              disabled={filling || !matterId || !templateId || !model}
+              className="flex-1 bg-primary hover:bg-primary/90"
+            >
+              {filling ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Filling… <span className="ml-1 font-mono tabular-nums">{elapsedLabel}</span>
+                </>
+              ) : (
+                <>
+                  <Wand2 className="mr-2 h-4 w-4" />
+                  Fill
+                </>
+              )}
+            </Button>
+            {filling && (
+              <Button variant="outline" onClick={cancel} className="border-border">
+                <X className="mr-1 h-4 w-4" />
+                Cancel
+              </Button>
             )}
-          </Button>
+          </div>
+          {filling && (
+            <p className="text-xs text-muted-foreground">
+              Running locally — this keeps going if you switch tabs. Larger models
+              and first-time loads can take a few minutes.
+            </p>
+          )}
         </CardContent>
       </Card>
 

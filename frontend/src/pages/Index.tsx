@@ -3,6 +3,7 @@ import Header from "@/components/Header";
 import AttorneyWorkspace from "@/components/AttorneyWorkspace";
 import DeveloperConsole from "@/components/DeveloperConsole";
 import Library from "@/components/Library";
+import { FillProvider } from "@/components/FillContext";
 import { Scale, Wrench, FolderUp, ShieldCheck, ShieldOff } from "lucide-react";
 import { api } from "@/api/client";
 
@@ -58,6 +59,7 @@ const Index = () => {
   );
 
   return (
+    <FillProvider>
     <div className="min-h-screen bg-background">
       <Header right={SurfaceToggle} />
 
@@ -95,6 +97,7 @@ const Index = () => {
         {surface === "developer" && <DeveloperConsole />}
       </div>
     </div>
+    </FillProvider>
   );
 };
 

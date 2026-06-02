@@ -70,6 +70,7 @@ export interface OllamaModel {
   family?: string;
   parameter_size?: string;
   quantization?: string;
+  embedding?: boolean;
 }
 
 export interface ModelStyleStats {
@@ -109,11 +110,12 @@ export const api = {
       j<{ available: boolean; models: OllamaModel[]; message?: string }>
     ),
 
-  fill: (matter_id: string, template_id: string, model: string) =>
+  fill: (matter_id: string, template_id: string, model: string, signal?: AbortSignal) =>
     fetch(`${BASE}/fill`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ matter_id, template_id, model }),
+      signal,
     }).then(j<FillResult>),
 
   runs: () => fetch(`${BASE}/runs`).then(j<FillResult[]>),
