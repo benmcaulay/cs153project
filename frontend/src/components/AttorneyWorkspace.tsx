@@ -30,10 +30,121 @@ import {
   ShieldAlert,
   Info,
   X,
+  Eye,
+  ChevronDown,
+  ChevronRight,
+  RefreshCw,
 } from "lucide-react";
-import { api, TemplateInfo, FillResult } from "@/api/client";
+import { api, TemplateInfo, FillResult, DocText } from "@/api/client";
+import { useState } from "react";
 import FilledDocument from "@/components/FilledDocument";
 import { useFill } from "@/components/FillContext";
+
+const SourceInspector = ({
+  matterId,
+  templateId,
+}: {
+  matterId: string;
+  templateId: string;
+}) => {
+  const [open, setOpen] = useState(false);
+  const [docs, setDocs] = useState<DocText[] | null>(null);
+  const [tmpl, setTmpl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [d, t] = await Promise.all([
+        matterId ? api.matterText(matterId) : Promise.resolve([] as DocText[]),
+        templateId ? api.templateText(templateId) : Promise.resolve({ text: "" }),
+      ]);
+      setDocs(d);
+      setTmpl(t.text);
+    } catch {
+      setDocs([]);
+      setTmpl("");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    if (next && docs === null) load();
+  };
+
+  if (!matterId && !templateId) return null;
+
+  return (
+    <Card className="bg-card border-border">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-card-foreground flex items-center justify-between text-lg">
+          <button onClick={toggle} className="flex items-center gap-2">
+            {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            <Eye className="h-5 w-5 text-muted-foreground" />
+            Inspect sources
+          </button>
+          {open && (
+            <Button variant="outline" size="sm" onClick={load} disabled={loading} className="border-border">
+              <RefreshCw className={"h-4 w-4 " + (loading ? "animate-spin" : "")} />
+            </Button>
+          )}
+        </CardTitle>
+        <CardDescription>
+          See exactly what the model reads — the extracted text of each case
+          document and the template with its detected blanks.
+        </CardDescription>
+      </CardHeader>
+      {open && (
+        <CardContent className="space-y-3">
+          {loading && <p className="text-sm text-muted-foreground">Reading sources…</p>}
+
+          {tmpl != null && (
+            <div className="rounded-lg border border-border">
+              <div className="px-3 py-2 text-sm font-medium text-foreground border-b border-border">
+                Template
+              </div>
+              <pre className="p-3 text-xs whitespace-pre-wrap font-mono max-h-48 overflow-y-auto text-muted-foreground">
+                {tmpl || "(empty)"}
+              </pre>
+            </div>
+          )}
+
+          {docs?.map((d) => (
+            <div key={d.filename} className="rounded-lg border border-border">
+              <button
+                onClick={() => setExpanded(expanded === d.filename ? null : d.filename)}
+                className="w-full flex items-center justify-between px-3 py-2 text-sm"
+              >
+                <span className="flex items-center gap-2 font-medium text-foreground truncate">
+                  <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span className="truncate">{d.filename}</span>
+                </span>
+                <Badge
+                  variant="outline"
+                  className={d.chars === 0 ? "text-amber-700 border-amber-400" : ""}
+                >
+                  {d.chars === 0 ? "no readable text" : `${d.chars.toLocaleString()} chars`}
+                </Badge>
+              </button>
+              {expanded === d.filename && (
+                <pre className="px-3 pb-3 text-xs whitespace-pre-wrap font-mono max-h-64 overflow-y-auto text-muted-foreground border-t border-border pt-2">
+                  {d.text || "(no extractable text — scanned/encrypted, or empty)"}
+                </pre>
+              )}
+            </div>
+          ))}
+          {docs?.length === 0 && !loading && (
+            <p className="text-sm text-muted-foreground">No documents in this matter.</p>
+          )}
+        </CardContent>
+      )}
+    </Card>
+  );
+};
 
 const AttorneyWorkspace = () => {
   const {
@@ -222,6 +333,8 @@ const AttorneyWorkspace = () => {
           )}
         </CardContent>
       </Card>
+
+      <SourceInspector matterId={matterId} templateId={templateId} />
 
       {result && <ResultView result={result} />}
     </div>

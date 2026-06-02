@@ -101,15 +101,25 @@ def _run_with(tmp_path, monkeypatch, fake):
     return filler.fill(folder, "m1", "Roe", template, _TEMPLATE, "fake:latest")
 
 
-def test_flat_dict_response_shape_is_accepted(tmp_path, monkeypatch):
-    # Some models return {key: value} instead of {"fields":[...]}. Should still fill.
+def test_flat_dict_response_shape_is_grounded_by_value(tmp_path, monkeypatch):
+    # Models often return {key: value} with no quote. The value itself ("Jane
+    # Roe") appears in the source, so it should be grounded and filled.
     def fake(model, system, prompt, temperature=0.0):
         return ({"client_name": "Jane Roe"}, 0.5, '{"client_name": "Jane Roe"}')
     run = _run_with(tmp_path, monkeypatch, fake)
-    reasons = {f.key: f.review_reason for f in run.fields}
-    # matched by key (not missing_key); ungrounded only because no quote was given
-    assert reasons["client_name"] == "ungrounded"
-    assert reasons["client_name"] != "missing_key"
+    cn = next(f for f in run.fields if f.key == "client_name")
+    assert cn.found and cn.value == "Jane Roe"
+    assert cn.source_document  # provenance located from the source
+
+
+def test_value_not_in_sources_is_dropped(tmp_path, monkeypatch):
+    # A value the model invented (not present in the case file) must NOT fill.
+    def fake(model, system, prompt, temperature=0.0):
+        return ({"client_name": "Nonexistent Person"}, 0.5, "{}")
+    run = _run_with(tmp_path, monkeypatch, fake)
+    cn = next(f for f in run.fields if f.key == "client_name")
+    assert not cn.found
+    assert cn.review_reason == "ungrounded"
 
 
 def test_label_keyed_response_is_matched(tmp_path, monkeypatch):

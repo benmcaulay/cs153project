@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 import uuid
 from collections import Counter
-from typing import Dict, List
+from typing import Dict, List, Optional, Tuple
 
 from . import ollama_client, prompts
 from .ingest import IngestedDoc, ingest_folder, ocr_available, total_chars
@@ -65,6 +65,40 @@ def _select_passages(fields, per_field: Dict[str, list], budget: int) -> List[di
                         break
         rank += 1
     return out
+
+
+def _snippet_around(text: str, needle: str, width: int = 180) -> str:
+    """A short, readable window of `text` around the first word of `needle`."""
+    flat = re.sub(r"\s+", " ", text).strip()
+    words = re.findall(r"[A-Za-z0-9]+", needle.lower())
+    i = flat.lower().find(words[0]) if words else -1
+    if i < 0:
+        return flat[:width].strip()
+    return flat[max(0, i - 40):max(0, i - 40) + width].strip()
+
+
+def _locate_evidence(evidence: str, passages: List[dict]) -> Tuple[Optional[str], Optional[str]]:
+    """Find the first passage that grounds `evidence`; return (snippet, document).
+
+    Grounding the *value* against the case file is the real anti-hallucination
+    requirement (FR-8): a value the model didn't copy from a source is a defect,
+    whether or not the model supplied a quote. Exact (normalized) containment
+    first, then a high token-overlap fallback for multi-word values.
+    """
+    needle = " ".join(evidence.lower().split())
+    if not needle:
+        return None, None
+    for p in passages:
+        if needle in " ".join(p["text"].lower().split()):
+            return _snippet_around(p["text"], evidence), p.get("document")
+    toks = [t for t in re.findall(r"[a-z0-9]+", needle) if len(t) > 2]
+    if len(toks) >= 3:
+        qset = set(toks)
+        for p in passages:
+            hset = set(re.findall(r"[a-z0-9]+", p["text"].lower()))
+            if len(qset & hset) / len(qset) >= 0.75:
+                return _snippet_around(p["text"], evidence), p.get("document")
+    return None, None
 
 
 def _is_grounded(quote: str, passages: List[str]) -> bool:
@@ -248,7 +282,6 @@ def fill(
     # the field can be filled, or left for review because the model omitted it,
     # blanked it, had no retrieved context, or gave a value we couldn't ground.
     resolved = _index_response(parsed, template.fields)
-    haystack = list(passages_by_doc.values())
     filled: List[FilledField] = []
     for spec in template.fields:
         item = resolved.get(spec.key)
@@ -267,13 +300,19 @@ def fill(
                                       found=False, review_reason=reason))
             continue
 
+        # Ground the VALUE in the case file (FR-8). A model-supplied quote helps
+        # but isn't required — many models return values with no quote, and a
+        # value that appears verbatim in a source is itself the proof.
         quote = (item.get("source_quote") or "").strip()
-        if quote and _is_grounded(quote, haystack):
+        snippet, doc = _locate_evidence(value, passages)
+        if snippet is None and quote:
+            snippet, doc = _locate_evidence(quote, passages)
+        if snippet is not None:
             filled.append(FilledField(
                 key=spec.key, label=spec.label, value=value, found=True,
                 confidence=_as_float(item.get("confidence")),
-                source_quote=quote,
-                source_document=(item.get("source_document") or None),
+                source_quote=(quote or snippet),
+                source_document=(item.get("source_document") or doc),
                 review_reason="filled",
             ))
         else:

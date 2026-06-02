@@ -31,6 +31,12 @@ export interface TemplateInfo {
   style?: string | null;
 }
 
+export interface DocText {
+  filename: string;
+  chars: number;
+  text: string;
+}
+
 export interface FilledField {
   key: string;
   label: string;
@@ -105,6 +111,12 @@ export const api = {
   matters: () => fetch(`${BASE}/matters`).then(j<CaseInfo[]>),
 
   templates: () => fetch(`${BASE}/templates`).then(j<TemplateInfo[]>),
+
+  matterText: (id: string) =>
+    fetch(`${BASE}/matters/${id}/text`).then(j<DocText[]>),
+
+  templateText: (id: string) =>
+    fetch(`${BASE}/templates/${id}/text`).then(j<{ text: string }>),
 
   models: () =>
     fetch(`${BASE}/models`).then(
