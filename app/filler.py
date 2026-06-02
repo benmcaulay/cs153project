@@ -14,7 +14,7 @@ from collections import Counter
 from typing import Dict, List
 
 from . import ollama_client, prompts
-from .ingest import IngestedDoc, ingest_folder, total_chars
+from .ingest import IngestedDoc, ingest_folder, ocr_available, total_chars
 from .models import FieldSpec, FilledField, FillResult, NEEDS_REVIEW, TemplateInfo
 from .retrieval import auto_retriever
 
@@ -143,10 +143,16 @@ def _diagnostic_message(filled: List[FilledField], empty_docs: List[str], mode: 
     parts: List[str] = []
     if empty_docs:
         shown = ", ".join(empty_docs[:5]) + ("…" if len(empty_docs) > 5 else "")
-        parts.append(
+        note = (
             f"{len(empty_docs)} document(s) extracted no readable text "
             f"(likely scanned PDFs needing OCR): {shown}."
         )
+        if not ocr_available():
+            note += (
+                " OCR isn't available on this host — install Tesseract and poppler "
+                "to read scanned PDFs automatically."
+            )
+        parts.append(note)
     counts = Counter(f.review_reason for f in filled if not f.found and f.review_reason)
     if counts:
         breakdown = "; ".join(f"{REASON_LABELS.get(r, r)}: {n}" for r, n in counts.most_common())

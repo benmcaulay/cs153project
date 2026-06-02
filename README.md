@@ -90,6 +90,18 @@ pip install -r requirements.txt
 The API is now serving. With a built frontend present (step 3) it also serves
 the UI at the same origin.
 
+**Scanned PDFs (optional OCR).** Image-only PDFs have no text layer. Verbatim
+will OCR them automatically if Tesseract + poppler are installed:
+
+```bash
+# macOS:   brew install tesseract poppler
+# Ubuntu:  sudo apt-get install tesseract-ocr poppler-utils
+# Windows: install Tesseract (UB-Mannheim) + poppler, add both to PATH
+```
+
+Without them, scanned documents extract no text and the fill diagnostic flags
+them. Disable OCR entirely with `VERBATIM_OCR=0`.
+
 ### 2. Local model (for real fills)
 
 Install [Ollama](https://ollama.com) and pull a demo-sized model:

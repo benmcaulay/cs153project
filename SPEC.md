@@ -367,8 +367,10 @@ size is sufficient for *which* class of legal document.
 
 - Small models may mis-extract on long or unusually formatted case files;
   provenance and needs-review surfacing are the mitigations, not a guarantee.
-- Document parsing quality depends on source fidelity (scanned PDFs may require
-  OCR, identified as future work).
+- Document parsing quality depends on source fidelity. Scanned/image PDFs are
+  handled by an optional OCR fallback (Tesseract + poppler via `pytesseract` /
+  `pdf2image`); when those aren't installed, such documents extract no text and
+  the fill's diagnostic flags them with an install hint.
 - Confidence scores are model self-reports and are advisory only.
 - The prototype lacks authentication and must not be exposed beyond a trusted
   local host as-is.

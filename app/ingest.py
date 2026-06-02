@@ -49,7 +49,65 @@ def _read_pdf(path: str) -> str:
     from pypdf import PdfReader
 
     reader = PdfReader(path)
-    return "\n".join((page.extract_text() or "") for page in reader.pages)
+    text = "\n".join((page.extract_text() or "") for page in reader.pages)
+    # Scanned/image PDFs have no text layer — fall back to OCR (FR-1).
+    return _with_ocr_fallback(text, path)
+
+
+# --------------------------------------------------------------------------- #
+# OCR fallback for scanned PDFs (FR-1). Optional + graceful: if Tesseract /
+# poppler aren't installed, extraction simply returns empty and the fill's
+# diagnostic flags the document — nothing crashes (NFR-3, NFR-5).
+# --------------------------------------------------------------------------- #
+OCR_MIN_CHARS = 40  # below this a PDF is treated as scanned and OCR is attempted
+OCR_DPI = int(os.environ.get("VERBATIM_OCR_DPI", "200"))
+_OCR_ENABLED = os.environ.get("VERBATIM_OCR", "1") != "0"
+
+
+def ocr_available() -> bool:
+    """True if OCR can actually run (feature enabled + libs + tesseract binary)."""
+    if not _OCR_ENABLED:
+        return False
+    try:
+        import pytesseract  # noqa: F401
+        from pdf2image import convert_from_path  # noqa: F401
+
+        import pytesseract as _pt
+
+        _pt.get_tesseract_version()
+        return True
+    except Exception:
+        return False
+
+
+def ocr_pdf(path: str) -> str:
+    """Rasterize a PDF and OCR each page. Returns '' if OCR isn't available."""
+    try:
+        import pytesseract
+        from pdf2image import convert_from_path
+    except Exception as exc:
+        print(f"[ingest] OCR libraries unavailable ({exc}); install pytesseract + pdf2image.")
+        return ""
+    try:
+        images = convert_from_path(path, dpi=OCR_DPI)
+    except Exception as exc:
+        print(f"[ingest] could not rasterize {path} for OCR ({exc}); is poppler installed?")
+        return ""
+    pages: List[str] = []
+    for img in images:
+        try:
+            pages.append(pytesseract.image_to_string(img))
+        except Exception as exc:
+            print(f"[ingest] OCR failed on a page of {path}: {exc}")
+    return "\n".join(pages).strip()
+
+
+def _with_ocr_fallback(text: str, path: str) -> str:
+    """Use OCR text when the native PDF text layer is empty/negligible."""
+    if len(text.strip()) >= OCR_MIN_CHARS or not _OCR_ENABLED:
+        return text
+    ocr = ocr_pdf(path)
+    return ocr if len(ocr.strip()) > len(text.strip()) else text
 
 
 def read_document(path: str) -> str:
