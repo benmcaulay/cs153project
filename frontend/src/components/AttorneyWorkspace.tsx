@@ -36,7 +36,6 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { api, TemplateInfo, FillResult, DocText } from "@/api/client";
-import { useState } from "react";
 import FilledDocument from "@/components/FilledDocument";
 import { useFill } from "@/components/FillContext";
 
