@@ -8,13 +8,29 @@ in the case file is returned as NEEDS_REVIEW; the system never fabricates.
 """
 from __future__ import annotations
 
+import re
 import uuid
-from typing import List
+from collections import Counter
+from typing import Dict, List
 
 from . import ollama_client, prompts
 from .ingest import IngestedDoc, ingest_folder, total_chars
 from .models import FieldSpec, FilledField, FillResult, NEEDS_REVIEW, TemplateInfo
 from .retrieval import auto_retriever
+
+# Documents that extract to fewer than this many characters are almost certainly
+# unreadable (scanned/image PDFs needing OCR) rather than genuinely empty.
+_MIN_DOC_CHARS = 40
+
+# Human-readable explanation for each needs-review reason (surfaced in the UI).
+REASON_LABELS = {
+    "no_context": "no matching passage retrieved",
+    "model_blanked": "model found nothing to ground in the sources",
+    "ungrounded": "value dropped — quote not found in sources",
+    "missing_key": "model omitted this field",
+    "model_unreachable": "model runtime unavailable",
+    "no_documents": "no readable case text",
+}
 
 
 def _retrieval_query(field: FieldSpec) -> str:
@@ -24,35 +40,78 @@ def _retrieval_query(field: FieldSpec) -> str:
     return " ".join(parts)
 
 
-def _validate_grounding(field: FilledField, passages_by_doc: dict) -> FilledField:
-    """
-    Enforce the anti-hallucination contract (FR-8): a value only counts as
-    grounded if its supporting quote actually appears in the retrieved source.
-    Otherwise it is downgraded to NEEDS_REVIEW.
-    """
-    if not field.found or field.value.strip().upper() == NEEDS_REVIEW or not field.value.strip():
-        field.found = False
-        field.value = NEEDS_REVIEW
-        field.source_quote = None
-        field.source_document = None
-        return field
+def _select_passages(fields, per_field: Dict[str, list], budget: int) -> List[dict]:
+    """Interleave each field's top hits by rank so no field is starved of context.
 
-    quote = (field.source_quote or "").strip()
-    if not quote:
-        field.found = False
-        field.value = NEEDS_REVIEW
-        field.source_document = None
-        return field
+    The previous strategy filled a single global pool field-by-field and then
+    truncated it, which let the first few fields consume every slot and left the
+    rest with no relevant passages at all. Round-robin by rank guarantees each
+    field contributes its best passages before any field contributes its second.
+    """
+    seen = set()
+    out: List[dict] = []
+    rank = 0
+    max_rank = max((len(v) for v in per_field.values()), default=0)
+    while rank < max_rank and len(out) < budget:
+        for f in fields:
+            hits = per_field.get(f.key, [])
+            if rank < len(hits):
+                r = hits[rank]
+                dedup = (r.document, r.text[:80])
+                if dedup not in seen:
+                    seen.add(dedup)
+                    out.append({"document": r.document, "text": r.text})
+                    if len(out) >= budget:
+                        break
+        rank += 1
+    return out
 
-    # The quote must be present (case-insensitively) in some retrieved passage.
+
+def _is_grounded(quote: str, passages: List[str]) -> bool:
+    """Anti-hallucination check (FR-8), tolerant of minor model paraphrase.
+
+    A value is grounded if its supporting quote appears in a passage as a
+    normalized substring, OR (for a quote of several content words) if at least
+    three-quarters of its content tokens co-occur in a single passage. The
+    fuzzy arm keeps near-verbatim quotes from being wrongly discarded while
+    still rejecting fabricated values that don't track the source.
+    """
     needle = " ".join(quote.lower().split())
-    grounded = any(needle in " ".join(p.lower().split()) for p in passages_by_doc.values())
-    if not grounded:
-        field.found = False
-        field.value = NEEDS_REVIEW
-        field.source_quote = None
-        field.source_document = None
-    return field
+    if not needle:
+        return False
+    hay = [" ".join(p.lower().split()) for p in passages]
+    if any(needle in h for h in hay):
+        return True
+    q_tokens = [t for t in re.findall(r"[a-z0-9]+", needle) if len(t) > 2]
+    if len(q_tokens) < 3:  # too short to fuzzy-match without risking a false positive
+        return False
+    q_set = set(q_tokens)
+    for h in hay:
+        h_set = set(re.findall(r"[a-z0-9]+", h))
+        if len(q_set & h_set) / len(q_set) >= 0.75:
+            return True
+    return False
+
+
+def _diagnostic_message(filled: List[FilledField], empty_docs: List[str], mode: str) -> str:
+    """Explain *why* blanks were left for review, so 0/N is never a mystery."""
+    parts: List[str] = []
+    if empty_docs:
+        shown = ", ".join(empty_docs[:5]) + ("…" if len(empty_docs) > 5 else "")
+        parts.append(
+            f"{len(empty_docs)} document(s) extracted no readable text "
+            f"(likely scanned PDFs needing OCR): {shown}."
+        )
+    counts = Counter(f.review_reason for f in filled if not f.found and f.review_reason)
+    if counts:
+        breakdown = "; ".join(f"{REASON_LABELS.get(r, r)}: {n}" for r, n in counts.most_common())
+        parts.append(f"Needs-review breakdown — {breakdown}.")
+    if counts.get("no_context") and mode == "lexical":
+        parts.append(
+            "Retrieval is lexical; installing an embedding model "
+            "(e.g. `ollama pull nomic-embed-text`) enables semantic matching."
+        )
+    return " ".join(parts)
 
 
 def fill(
@@ -81,12 +140,20 @@ def fill(
 
     # --- ingest + retrieve (FR-2, FR-3) -----------------------------------
     docs: List[IngestedDoc] = ingest_folder(matter_folder)
+    empty_docs = [d.filename for d in docs if len(d.text.strip()) < _MIN_DOC_CHARS]
     all_chunks = [c for d in docs for c in d.chunks]
     if not all_chunks:
         run.status = "error"
-        run.message = "No readable case documents found in the matter folder."
+        hint = ""
+        if empty_docs:
+            hint = (
+                f" {len(empty_docs)} file(s) extracted no readable text "
+                f"(likely scanned PDFs needing OCR): {', '.join(empty_docs[:5])}."
+            )
+        run.message = "No readable case text found in the matter folder." + hint
         run.fields = [
-            FilledField(key=f.key, label=f.label, value=NEEDS_REVIEW, found=False)
+            FilledField(key=f.key, label=f.label, value=NEEDS_REVIEW, found=False,
+                        review_reason="no_documents")
             for f in template.fields
         ]
         run.filled_text = _assemble(template_text, run.fields, template.fields)
@@ -95,16 +162,13 @@ def fill(
     retriever = auto_retriever(all_chunks)
     run.retrieval_mode = retriever.mode
 
-    passages: List[dict] = []
-    seen = set()
-    for f in template.fields:
-        for r in retriever.retrieve(_retrieval_query(f), k=4):
-            key = (r.document, r.text[:80])
-            if key in seen:
-                continue
-            seen.add(key)
-            passages.append({"document": r.document, "text": r.text})
-    passages = passages[:14]  # cap context for smaller models
+    # Retrieve per field, then interleave by rank so every field gets context
+    # (a single global pool let early fields starve the rest — a prime cause of
+    # an all-needs-review result). Budget scales with the number of blanks.
+    per_field = {f.key: retriever.retrieve(_retrieval_query(f), k=4) for f in template.fields}
+    fields_with_context = {k for k, hits in per_field.items() if hits}
+    budget = min(max(16, len(template.fields) * 2), 30)
+    passages = _select_passages(template.fields, per_field, budget)
     passages_by_doc = {f"{i}": p["text"] for i, p in enumerate(passages)}
 
     # --- model inference (FR-6, FR-7, NFR-2) -----------------------------
@@ -120,29 +184,52 @@ def fill(
         run.message = str(exc)
         print(f"[fill] inference failed (kind={kind}) model={model}: {exc}")
         run.fields = [
-            FilledField(key=f.key, label=f.label, value=NEEDS_REVIEW, found=False)
+            FilledField(key=f.key, label=f.label, value=NEEDS_REVIEW, found=False,
+                        review_reason="model_unreachable")
             for f in template.fields
         ]
         run.filled_text = _assemble(template_text, run.fields, template.fields)
         return run.recount()
 
     # --- assemble + validate provenance (FR-7, FR-8) ----------------------
+    # Classify every blank's outcome so an all-needs-review result is explained:
+    # the field can be filled, or left for review because the model omitted it,
+    # blanked it, had no retrieved context, or gave a value we couldn't ground.
     by_key = {item.get("key"): item for item in parsed.get("fields", []) if isinstance(item, dict)}
+    haystack = list(passages_by_doc.values())
     filled: List[FilledField] = []
     for spec in template.fields:
-        item = by_key.get(spec.key, {})
-        ff = FilledField(
-            key=spec.key,
-            label=spec.label,
-            value=str(item.get("value", NEEDS_REVIEW)),
-            found=bool(item.get("found", False)),
-            confidence=_as_float(item.get("confidence")),
-            source_quote=(item.get("source_quote") or None),
-            source_document=(item.get("source_document") or None),
+        item = by_key.get(spec.key)
+        if item is None:
+            filled.append(FilledField(key=spec.key, label=spec.label, value=NEEDS_REVIEW,
+                                      found=False, review_reason="missing_key"))
+            continue
+
+        value = str(item.get("value", NEEDS_REVIEW)).strip()
+        model_filled = (
+            bool(item.get("found", False)) and value and value.upper() != NEEDS_REVIEW
         )
-        filled.append(_validate_grounding(ff, passages_by_doc))
+        if not model_filled:
+            reason = "no_context" if spec.key not in fields_with_context else "model_blanked"
+            filled.append(FilledField(key=spec.key, label=spec.label, value=NEEDS_REVIEW,
+                                      found=False, review_reason=reason))
+            continue
+
+        quote = (item.get("source_quote") or "").strip()
+        if quote and _is_grounded(quote, haystack):
+            filled.append(FilledField(
+                key=spec.key, label=spec.label, value=value, found=True,
+                confidence=_as_float(item.get("confidence")),
+                source_quote=quote,
+                source_document=(item.get("source_document") or None),
+                review_reason="filled",
+            ))
+        else:
+            filled.append(FilledField(key=spec.key, label=spec.label, value=NEEDS_REVIEW,
+                                      found=False, review_reason="ungrounded"))
 
     run.fields = filled
+    run.message = _diagnostic_message(filled, empty_docs, run.retrieval_mode) or None
     run.filled_text = _assemble(template_text, filled, template.fields)
     return run.recount()
 

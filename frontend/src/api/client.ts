@@ -40,6 +40,7 @@ export interface FilledField {
   source_quote?: string | null;
   source_document?: string | null;
   admin_flag?: "correct" | "incorrect" | null;
+  review_reason?: string | null;
 }
 
 export interface FillResult {

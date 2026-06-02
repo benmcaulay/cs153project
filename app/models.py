@@ -70,6 +70,11 @@ class FilledField(BaseModel):
     source_quote: Optional[str] = None  # short verbatim supporting quote
     source_document: Optional[str] = None  # originating document name
 
+    # Why a blank was left for review, when it was (diagnostic, surfaced in UI):
+    # "filled" | "no_context" | "model_blanked" | "ungrounded" | "missing_key"
+    # | "model_unreachable" | "no_documents"
+    review_reason: Optional[str] = None
+
     # Administrator evaluation flag (FR-13): "correct" | "incorrect" | None
     admin_flag: Optional[str] = None
 

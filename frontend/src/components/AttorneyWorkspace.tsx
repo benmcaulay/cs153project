@@ -28,6 +28,7 @@ import {
   Clock,
   Quote,
   ShieldAlert,
+  Info,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -295,7 +296,17 @@ const Metric = ({
   </div>
 );
 
+const REVIEW_REASONS: Record<string, string> = {
+  no_context: "No matching passage was retrieved from the case file.",
+  model_blanked: "The model found nothing it could ground in the sources.",
+  ungrounded: "The model proposed a value, but its quote wasn't found in the sources.",
+  missing_key: "The model omitted this field from its response.",
+  model_unreachable: "The model runtime was unavailable.",
+  no_documents: "No readable case text was available.",
+};
+
 const ResultView = ({ result }: { result: FillResult }) => {
+  const incomplete = result.status === "ok" && result.blanks_filled < result.blanks_total;
   return (
     <>
       {/* Why everything is for review, when inference didn't complete */}
@@ -311,6 +322,19 @@ const ResultView = ({ result }: { result: FillResult }) => {
                 : "Inference did not complete."}
             </span>
             {result.message && <div className="mt-0.5">{result.message}</div>}
+          </div>
+        </div>
+      )}
+
+      {/* The fill completed but blanks remain — explain why, so 0/N isn't a mystery */}
+      {incomplete && result.message && (
+        <div className="flex items-start gap-2 rounded-md border border-sky-300 bg-sky-50 p-3 text-sm text-sky-900">
+          <Info className="h-4 w-4 mt-0.5 shrink-0" />
+          <div>
+            <span className="font-semibold">
+              {result.blanks_filled} of {result.blanks_total} blanks filled.
+            </span>{" "}
+            {result.message}
           </div>
         </div>
       )}
@@ -431,6 +455,12 @@ const ResultView = ({ result }: { result: FillResult }) => {
                   <span>
                     “{f.source_quote}” — <span className="font-mono">{f.source_document}</span>
                   </span>
+                </div>
+              )}
+              {!f.found && f.review_reason && REVIEW_REASONS[f.review_reason] && (
+                <div className="text-xs text-amber-700/90 flex items-start gap-1">
+                  <Info className="h-3 w-3 mt-0.5 shrink-0" />
+                  <span>{REVIEW_REASONS[f.review_reason]}</span>
                 </div>
               )}
             </div>
