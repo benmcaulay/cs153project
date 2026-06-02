@@ -67,11 +67,16 @@ _OCR_ENABLED = os.environ.get("VERBATIM_OCR", "1") != "0"
 #   VERBATIM_POPPLER_PATH  = C:\poppler-24.08.0\Library\bin
 _TESSERACT_CMD = os.environ.get("VERBATIM_TESSERACT_CMD")
 _POPPLER_PATH = os.environ.get("VERBATIM_POPPLER_PATH")
+# Where eng.traineddata lives, if not alongside tesseract.exe (e.g. a separate
+# tessdata folder): VERBATIM_TESSDATA_DIR = D:\Program Files\tessdata
+_TESSDATA_DIR = os.environ.get("VERBATIM_TESSDATA_DIR")
 
 
 def _configure_tesseract(pytesseract) -> None:
     if _TESSERACT_CMD:
         pytesseract.pytesseract.tesseract_cmd = _TESSERACT_CMD
+    if _TESSDATA_DIR:
+        os.environ["TESSDATA_PREFIX"] = _TESSDATA_DIR
 
 
 def _tesseract_ok() -> bool:
