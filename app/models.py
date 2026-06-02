@@ -107,6 +107,10 @@ class FillResult(BaseModel):
     status: str = "ok"  # "ok" | "model_unreachable" | "error"
     message: Optional[str] = None
 
+    # Truncated raw model response, kept for diagnosis when output doesn't parse
+    # or doesn't match the expected schema (local-only, like the rest of the run).
+    raw_model_output: Optional[str] = None
+
     def recount(self) -> "FillResult":
         self.blanks_total = len(self.fields)
         self.blanks_filled = sum(1 for f in self.fields if f.found)

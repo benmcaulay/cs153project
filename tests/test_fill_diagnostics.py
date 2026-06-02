@@ -47,6 +47,7 @@ def _fake_generate_json(model, system, prompt, temperature=0.0):
             ]
         },
         1.23,
+        '{"fields": [...]}',
     )
 
 
@@ -86,6 +87,51 @@ def test_counts_and_message(tmp_path, monkeypatch):
     # the diagnostic message explains the 4 needs-review blanks
     assert "Needs-review breakdown" in (run.message or "")
     assert "embedding model" in (run.message or "")  # lexical + no_context hint
+
+
+def _run_with(tmp_path, monkeypatch, fake):
+    monkeypatch.setattr(ollama_client, "has_embeddings_model", lambda: None)
+    monkeypatch.setattr(ollama_client, "generate_json", fake)
+    folder = os.path.join(tmp_path, "Roe")
+    os.makedirs(folder)
+    with open(os.path.join(folder, "intake.txt"), "w") as fh:
+        fh.write(_DOC)
+    template = TemplateInfo(id="t1", name="Test", filename="t.md", kind="md",
+                            fields=templates.detect_fields(_TEMPLATE))
+    return filler.fill(folder, "m1", "Roe", template, _TEMPLATE, "fake:latest")
+
+
+def test_flat_dict_response_shape_is_accepted(tmp_path, monkeypatch):
+    # Some models return {key: value} instead of {"fields":[...]}. Should still fill.
+    def fake(model, system, prompt, temperature=0.0):
+        return ({"client_name": "Jane Roe"}, 0.5, '{"client_name": "Jane Roe"}')
+    run = _run_with(tmp_path, monkeypatch, fake)
+    reasons = {f.key: f.review_reason for f in run.fields}
+    # matched by key (not missing_key); ungrounded only because no quote was given
+    assert reasons["client_name"] == "ungrounded"
+    assert reasons["client_name"] != "missing_key"
+
+
+def test_label_keyed_response_is_matched(tmp_path, monkeypatch):
+    # Model keyed by label ("Client Name") with a grounded quote -> should fill.
+    def fake(model, system, prompt, temperature=0.0):
+        return (
+            {"fields": [{"key": "Client Name", "value": "Jane Roe", "found": True,
+                         "source_quote": "Our client is Jane Roe", "source_document": "intake.txt"}]},
+            0.5, "ok",
+        )
+    run = _run_with(tmp_path, monkeypatch, fake)
+    cn = next(f for f in run.fields if f.key == "client_name")
+    assert cn.found and cn.value == "Jane Roe"
+
+
+def test_unparseable_response_surfaces_raw_snippet(tmp_path, monkeypatch):
+    def fake(model, system, prompt, temperature=0.0):
+        return ({"fields": []}, 0.5, "the model rambled and produced no usable JSON here")
+    run = _run_with(tmp_path, monkeypatch, fake)
+    assert run.blanks_filled == 0
+    assert "Raw model output" in (run.message or "")
+    assert run.raw_model_output
 
 
 def test_empty_documents_are_flagged(tmp_path, monkeypatch):

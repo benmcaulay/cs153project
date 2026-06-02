@@ -93,6 +93,51 @@ def _is_grounded(quote: str, passages: List[str]) -> bool:
     return False
 
 
+def _normalize_key(s) -> str:
+    return re.sub(r"[^a-z0-9]+", "", str(s).lower())
+
+
+def _index_response(parsed, specs) -> dict:
+    """Map each template field to the model's answer, tolerant of output shape.
+
+    Models don't always return the agreed `{"fields":[{"key":...}]}`: some emit a
+    flat `{key: value}` object, a bare list, or key each item by its label rather
+    than its key. We collect items from any of these shapes and resolve each
+    field by key first, then by label — so a well-meaning but off-schema response
+    fills blanks instead of being silently dropped as "model omitted this field".
+    """
+    items: List[dict] = []
+    if isinstance(parsed, dict) and isinstance(parsed.get("fields"), list):
+        items = [it for it in parsed["fields"] if isinstance(it, dict)]
+    elif isinstance(parsed, list):
+        items = [it for it in parsed if isinstance(it, dict)]
+    elif isinstance(parsed, dict):
+        for k, v in parsed.items():
+            if k == "fields":
+                continue
+            if isinstance(v, dict):
+                it = dict(v)
+                it.setdefault("key", k)
+                items.append(it)
+            elif isinstance(v, (str, int, float)):
+                items.append({"key": k, "value": v, "found": True})
+
+    lookup: dict = {}
+    for it in items:
+        for alias in (it.get("key"), it.get("field"), it.get("name"), it.get("label")):
+            if alias:
+                lookup.setdefault(_normalize_key(alias), it)
+
+    resolved: dict = {}
+    for spec in specs:
+        for cand in (spec.key, spec.label):
+            it = lookup.get(_normalize_key(cand))
+            if it is not None:
+                resolved[spec.key] = it
+                break
+    return resolved
+
+
 def _diagnostic_message(filled: List[FilledField], empty_docs: List[str], mode: str) -> str:
     """Explain *why* blanks were left for review, so 0/N is never a mystery."""
     parts: List[str] = []
@@ -175,8 +220,9 @@ def fill(
     system = prompts.SYSTEM_PROMPT
     user = prompts.build_user_prompt(template.fields, passages)
     try:
-        parsed, elapsed = ollama_client.generate_json(model, system, user, temperature=0.0)
+        parsed, elapsed, raw = ollama_client.generate_json(model, system, user, temperature=0.0)
         run.inference_seconds = round(elapsed, 3)
+        run.raw_model_output = (raw or "")[:4000] or None
     except ollama_client.OllamaUnavailable as exc:
         # Degrade gracefully (NFR-3): mark everything for review, never crash.
         kind = getattr(exc, "kind", "error")
@@ -195,11 +241,11 @@ def fill(
     # Classify every blank's outcome so an all-needs-review result is explained:
     # the field can be filled, or left for review because the model omitted it,
     # blanked it, had no retrieved context, or gave a value we couldn't ground.
-    by_key = {item.get("key"): item for item in parsed.get("fields", []) if isinstance(item, dict)}
+    resolved = _index_response(parsed, template.fields)
     haystack = list(passages_by_doc.values())
     filled: List[FilledField] = []
     for spec in template.fields:
-        item = by_key.get(spec.key)
+        item = resolved.get(spec.key)
         if item is None:
             filled.append(FilledField(key=spec.key, label=spec.label, value=NEEDS_REVIEW,
                                       found=False, review_reason="missing_key"))
@@ -230,6 +276,11 @@ def fill(
 
     run.fields = filled
     run.message = _diagnostic_message(filled, empty_docs, run.retrieval_mode) or None
+    # If the model produced output but we couldn't use any of it, show a snippet
+    # so the mismatch is visible rather than a silent 0/N.
+    if not any(f.found for f in filled) and run.raw_model_output:
+        snippet = re.sub(r"\s+", " ", run.raw_model_output).strip()[:240]
+        run.message = (run.message or "") + f" Raw model output (first 240 chars): {snippet}"
     run.filled_text = _assemble(template_text, filled, template.fields)
     return run.recount()
 

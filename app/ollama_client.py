@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from typing import List, Optional, Tuple
 
@@ -136,12 +137,12 @@ def generate_json(
     system: str,
     prompt: str,
     temperature: float = 0.0,
-) -> Tuple[dict, float]:
+) -> Tuple[dict, float, str]:
     """
     Run a deterministic (temperature 0, NFR-2) JSON-mode completion.
 
-    Returns (parsed_json, elapsed_seconds). Raises OllamaUnavailable if the
-    runtime cannot be reached.
+    Returns (parsed_json, elapsed_seconds, raw_text). Raises OllamaUnavailable if
+    the runtime cannot be reached.
     """
     payload = {
         "model": model,
@@ -149,6 +150,9 @@ def generate_json(
         "prompt": prompt,
         "stream": False,
         "format": "json",  # runtime-enforced JSON mode (SRS §9.3)
+        # Reasoning models (e.g. Qwen3) otherwise emit <think> blocks that wreck
+        # JSON-mode output; ask the runtime to disable thinking where supported.
+        "think": False,
         "options": {"temperature": temperature},
     }
     start = time.perf_counter()
@@ -182,12 +186,14 @@ def generate_json(
     elapsed = time.perf_counter() - start
 
     raw = body.get("response", "").strip()
+    # Strip any reasoning wrapper a thinking model may still emit.
+    cleaned = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL | re.IGNORECASE).strip()
     try:
-        parsed = json.loads(raw)
+        parsed = json.loads(cleaned)
     except json.JSONDecodeError:
-        # Smaller models occasionally wrap JSON in prose; salvage the object.
-        parsed = _salvage_json(raw)
-    return parsed, elapsed
+        # Smaller models occasionally wrap JSON in prose / code fences; salvage it.
+        parsed = _salvage_json(cleaned)
+    return parsed, elapsed, raw
 
 
 def _salvage_json(raw: str) -> dict:

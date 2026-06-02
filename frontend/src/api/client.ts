@@ -62,6 +62,7 @@ export interface FillResult {
   retrieval_mode: string;
   status: string;
   message?: string | null;
+  raw_model_output?: string | null;
 }
 
 export interface OllamaModel {
