@@ -74,10 +74,7 @@ def _configure_tesseract(pytesseract) -> None:
         pytesseract.pytesseract.tesseract_cmd = _TESSERACT_CMD
 
 
-def ocr_available() -> bool:
-    """True if OCR can actually run (feature enabled + libs + tesseract binary)."""
-    if not _OCR_ENABLED:
-        return False
+def _tesseract_ok() -> bool:
     try:
         import pytesseract
         from pdf2image import convert_from_path  # noqa: F401
@@ -87,6 +84,26 @@ def ocr_available() -> bool:
         return True
     except Exception:
         return False
+
+
+def _poppler_ok() -> bool:
+    """Verify poppler's pdftoppm is reachable — OCR rasterization needs it, and
+    its absence is the most common reason OCR silently produces nothing."""
+    import shutil
+
+    exe = "pdftoppm"
+    if _POPPLER_PATH:
+        win = os.path.join(_POPPLER_PATH, exe + ".exe")
+        nix = os.path.join(_POPPLER_PATH, exe)
+        if os.path.isfile(win) or os.path.isfile(nix):
+            return True
+        return shutil.which(exe, path=_POPPLER_PATH) is not None
+    return shutil.which(exe) is not None or shutil.which("pdfinfo") is not None
+
+
+def ocr_available() -> bool:
+    """True only if OCR can actually run: enabled, Tesseract, AND poppler."""
+    return _OCR_ENABLED and _tesseract_ok() and _poppler_ok()
 
 
 def ocr_pdf(path: str) -> str:

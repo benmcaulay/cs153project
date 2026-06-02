@@ -47,6 +47,15 @@ def test_ocr_pdf_degrades_gracefully_without_libs(monkeypatch):
     assert ingest.ocr_available() is False
 
 
+def test_ocr_available_requires_both_tesseract_and_poppler(monkeypatch):
+    monkeypatch.setattr(ingest, "_OCR_ENABLED", True)
+    monkeypatch.setattr(ingest, "_tesseract_ok", lambda: True)
+    monkeypatch.setattr(ingest, "_poppler_ok", lambda: False)
+    assert ingest.ocr_available() is False  # tesseract alone isn't enough
+    monkeypatch.setattr(ingest, "_poppler_ok", lambda: True)
+    assert ingest.ocr_available() is True
+
+
 def test_explicit_binary_paths_are_forwarded(monkeypatch):
     # On Windows, users point at the binaries instead of editing PATH.
     captured = {}
