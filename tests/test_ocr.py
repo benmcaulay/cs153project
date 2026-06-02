@@ -31,6 +31,25 @@ def test_ocr_disabled_skips_fallback(monkeypatch):
     assert ingest._with_ocr_fallback("", "scan.pdf") == ""
 
 
+def test_pdf_read_failure_falls_back_to_ocr(monkeypatch):
+    # An encrypted/corrupt PDF makes pypdf raise — we must still OCR it rather
+    # than abandon the whole document. Inject a failing pypdf so the test is
+    # deterministic regardless of the local pypdf/cryptography install.
+    fake_pypdf = types.ModuleType("pypdf")
+
+    class _BoomReader:
+        def __init__(self, *a, **k):
+            raise RuntimeError("cryptography>=3.1 is required for AES algorithm")
+
+    fake_pypdf.PdfReader = _BoomReader
+    monkeypatch.setitem(sys.modules, "pypdf", fake_pypdf)
+    monkeypatch.setattr(ingest, "_OCR_ENABLED", True)
+    monkeypatch.setattr(ingest, "ocr_pdf", lambda p: "OCR RECOVERED TEXT FROM ENCRYPTED PDF")
+
+    out = ingest._read_pdf("encrypted.pdf")
+    assert out.startswith("OCR RECOVERED")
+
+
 def test_ocr_pdf_degrades_gracefully_without_libs(monkeypatch):
     # Simulate pytesseract/pdf2image not being importable.
     import builtins

@@ -5,6 +5,7 @@ pypdf>=4.0
 requests>=2.31
 python-multipart>=0.0.9
 pydantic>=2.0
+cryptography>=3.1          # lets pypdf open AES-encrypted PDFs (common in e-filed docs)
 
 # Optional: OCR fallback for scanned/image PDFs (FR-1). Also requires the
 # system binaries `tesseract` (Tesseract OCR) and `poppler` (pdftoppm).

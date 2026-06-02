@@ -46,11 +46,24 @@ def _read_docx(path: str) -> str:
 
 
 def _read_pdf(path: str) -> str:
-    from pypdf import PdfReader
+    text = ""
+    try:
+        from pypdf import PdfReader
 
-    reader = PdfReader(path)
-    text = "\n".join((page.extract_text() or "") for page in reader.pages)
-    # Scanned/image PDFs have no text layer — fall back to OCR (FR-1).
+        reader = PdfReader(path)
+        if reader.is_encrypted:
+            # Many e-filed / "signed" PDFs are encrypted with an empty user
+            # password; decrypt needs the `cryptography` package for AES.
+            try:
+                reader.decrypt("")
+            except Exception:
+                pass
+        text = "\n".join((page.extract_text() or "") for page in reader.pages)
+    except Exception as exc:
+        # Encrypted-without-cryptography, password-protected, or corrupt: don't
+        # abandon the file — fall through to OCR, which can often still render it.
+        print(f"[ingest] pypdf could not extract {os.path.basename(path)} ({exc}); trying OCR.")
+    # Scanned/image (or unreadable) PDFs have no usable text layer — try OCR (FR-1).
     return _with_ocr_fallback(text, path)
 
 
