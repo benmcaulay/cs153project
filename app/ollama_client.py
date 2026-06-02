@@ -21,6 +21,10 @@ OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 # Generation can be slow on the first call (the model loads into memory) and on
 # larger models / CPU-bound machines. Generous default; override as needed.
 DEFAULT_TIMEOUT = float(os.environ.get("VERBATIM_OLLAMA_TIMEOUT", "300"))
+# Ollama's default context window (often 4096) silently truncates a multi-document
+# prompt, after which the model returns empty/garbage. A larger window lets the
+# whole grounded prompt through. Raise for big matters; lower to save memory.
+NUM_CTX = int(os.environ.get("VERBATIM_NUM_CTX", "8192"))
 
 
 class OllamaUnavailable(RuntimeError):
@@ -153,7 +157,7 @@ def generate_json(
         # Reasoning models (e.g. Qwen3) otherwise emit <think> blocks that wreck
         # JSON-mode output; ask the runtime to disable thinking where supported.
         "think": False,
-        "options": {"temperature": temperature},
+        "options": {"temperature": temperature, "num_ctx": NUM_CTX},
     }
     start = time.perf_counter()
     try:

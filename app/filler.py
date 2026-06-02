@@ -284,9 +284,15 @@ def fill(
     run.message = _diagnostic_message(filled, empty_docs, run.retrieval_mode) or None
     # If the model produced output but we couldn't use any of it, show a snippet
     # so the mismatch is visible rather than a silent 0/N.
-    if not any(f.found for f in filled) and run.raw_model_output:
-        snippet = re.sub(r"\s+", " ", run.raw_model_output).strip()[:240]
-        run.message = (run.message or "") + f" Raw model output (first 240 chars): {snippet}"
+    if not any(f.found for f in filled):
+        if run.raw_model_output:
+            snippet = re.sub(r"\s+", " ", run.raw_model_output).strip()[:240]
+            run.message = (run.message or "") + f" Raw model output (first 240 chars): {snippet}"
+        else:
+            run.message = (run.message or "") + (
+                " The model returned an empty response — the prompt may exceed its "
+                "context window. Raise VERBATIM_NUM_CTX (or try a smaller matter)."
+            )
     run.filled_text = _assemble(template_text, filled, template.fields)
     return run.recount()
 

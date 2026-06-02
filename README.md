@@ -124,6 +124,11 @@ Verbatim talks only to `http://localhost:11434` (override with `OLLAMA_HOST`).
 Without Ollama running, the app still works end-to-end — every field returns as
 `NEEDS_REVIEW` with a clear "runtime offline" status.
 
+**Large matters:** a multi-document matter can exceed Ollama's default context
+window, after which the model returns nothing and every field reads as review.
+Verbatim requests `num_ctx=8192` by default; raise it for big matters with
+`VERBATIM_NUM_CTX` (more memory) or use a smaller matter.
+
 ### 3. Frontend
 
 For development (hot reload, proxies `/api` to the backend on :8000):
