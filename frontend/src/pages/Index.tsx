@@ -69,7 +69,7 @@ const Index = () => {
             <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-2">
               {SURFACE_TITLE[surface]}
             </h1>
-            <p className="text-muted-foreground text-base md:text-lg max-w-2xl">
+            <p className="text-muted-foreground text-base md:text-lg">
               {SURFACE_BLURB[surface]}
             </p>
           </div>
