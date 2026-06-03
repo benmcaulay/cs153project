@@ -24,7 +24,7 @@ from .export import export_docx
 from .filler import fill as run_fill
 from .models import CaseInfo, FillResult, ModelStyleStats, TemplateInfo
 from .store import flag_field, list_runs, load_run, set_template_style
-from .templates import read_template_text
+from .templates import prepare_template, read_template_text
 
 app = FastAPI(title="Verbatim", description="Privacy-preserving local legal template assistant")
 
@@ -88,14 +88,17 @@ def post_fill(req: FillRequest):
         raise HTTPException(404, "Template not found")
 
     path = catalog.template_path(req.template_id)
-    _kind, template_text = read_template_text(path)
+    _kind, raw_text = read_template_text(path)
+    # Fill the canonical (normalized) text so Tier-2-detected blanks in real
+    # firm templates are actually substituted, not just counted.
+    canonical_text, _fields = prepare_template(raw_text)
 
     result = run_fill(
         matter_folder=folder,
         matter_id=matter.id,
         matter_name=matter.name,
         template=template,
-        template_text=template_text,
+        template_text=canonical_text,
         model=req.model,
     )
     # Persist as an immutable run record (FR-16, FR-17)

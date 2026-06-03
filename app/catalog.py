@@ -15,7 +15,7 @@ from typing import List, Optional
 from .ingest import SUPPORTED_EXTS, ingest_folder, total_chars
 from .models import CaseInfo, TemplateInfo
 from .store import MATTERS_DIR, TEMPLATES_DIR, get_template_style
-from .templates import detect_fields, read_template_text
+from .templates import prepare_template, read_template_text
 
 TEMPLATE_EXTS = {".docx", ".txt", ".md"}
 
@@ -99,6 +99,7 @@ def template_path(template_id: str) -> Optional[str]:
 def _build_template_info(filename: str) -> TemplateInfo:
     path = os.path.join(TEMPLATES_DIR, filename)
     kind, text = read_template_text(path)
+    _canonical, fields = prepare_template(text)
     tid = _stable_id(filename)
     name = os.path.splitext(filename)[0].replace("_", " ").title()
     return TemplateInfo(
@@ -106,7 +107,7 @@ def _build_template_info(filename: str) -> TemplateInfo:
         name=name,
         filename=filename,
         kind=kind,
-        fields=detect_fields(text),
+        fields=fields,
         style=get_template_style(tid),
     )
 

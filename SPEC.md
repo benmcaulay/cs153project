@@ -135,21 +135,24 @@ API bound to `localhost`.
 - **FR-5.** The system shall derive a human-readable label for each blank and
   shall present each template's blank count to the attorney before a fill.
 
-FR-4 and FR-5 are **implemented** today (`app/templates.py`). However, the four
-real firm templates evaluated to date (Allstate/Depo SUR letters, Affidavit of
-Heirs, Caption) use **none** of this markup and therefore detect as zero blanks.
-Real templates mark blanks with underscore runs, yellow highlighting, bracketed
-spans, `[  ]` checkboxes, ALL-CAPS sentinels (`NAME`, `XXX`), `label :` pairs,
-empty table cells, and inline instructions. The following requirements close
-that gap; the full taxonomy, evidence, and proposed schema are in
-`docs/blank-detection.md`.
+FR-4 and FR-5 are **implemented** today (`app/templates.py`). Real firm templates
+(Allstate/Depo SUR letters, Affidavit of Heirs, Caption) use **none** of this
+markup and originally detected as zero blanks. Real templates mark blanks with
+underscore runs, yellow highlighting, bracketed spans, `[  ]` checkboxes,
+ALL-CAPS sentinels (`NAME`, `XXX`), `label :` pairs, empty table cells, and
+inline instructions. The following requirements close that gap; the full
+taxonomy, evidence, and proposed schema are in `docs/blank-detection.md`.
 
-- **FR-5.1 (Multi-convention detection — designed, not implemented).** Verbatim
-  shall additionally detect the blank conventions real templates use, via a
-  three-tier strategy: (i) deterministic heuristics for unambiguous physical
-  signals (underscores, brackets, checkboxes, highlight runs, `label :`, empty
-  table cells); (ii) LLM inference for semantic cases (sentinels, inline
-  instructions, choice prompts); (iii) canonical `{{key}}` as the stored format.
+- **FR-5.1 (Multi-convention detection — Tier-2 implemented; Tier-3 designed).**
+  Verbatim shall additionally detect the blank conventions real templates use,
+  via a three-tier strategy: (i) **deterministic heuristics for unambiguous
+  physical signals (underscores, brackets, checkboxes, `label :`, sentinels) —
+  implemented in `app/blank_detection.py` and wired into `prepare_template`;** a
+  firm-style template that detected 0 blanks now detects them (shipped
+  `affidavit_of_heirs.txt`: 0 → 19); (ii) LLM inference for the remaining
+  semantic cases (highlight-run semantics, inline instructions, choice prompts)
+  — designed, not implemented; (iii) canonical `{{key}}` as the stored format —
+  implemented (Tier-2 normalizes to it).
 - **FR-5.2 (OOXML-level docx parsing — designed, not implemented).** `.docx`
   templates shall be parsed at the OOXML run level so formatting signals —
   notably `w:highlight`, the firm's strongest intentional "fill me" marker — are
@@ -356,6 +359,19 @@ instrument. The intended protocol:
 This operationalizes the thesis: it produces evidence about *which* local model
 size is sufficient for *which* class of legal document.
 
+**Implemented.** A runnable harness in `eval/` realizes steps 2–4 against
+hand-labeled gold fixtures (`eval/gold/`), scoring each field as `correct`,
+`correct_abstention`, `fabrication`, `wrong_value`, or `miss`, with the
+**fabrication count** as the headline safety metric. It runs against pluggable
+engines (`--engine baseline | offline | ollama:<model>`) so the safety contract
+is measurable without a live model. Committed results and analysis are in
+`eval/results/` and `eval/README.md`. On the shipped gold set, the offline
+(runtime-down) path fabricated **0** values with **100%** correct abstention,
+and the naive baseline surfaced a real label-ambiguity defect (intake attorney
+mistaken for responsible attorney). A live 7B–70B comparison (step 5) is wired
+but not yet executed — it requires Ollama hardware (§8) and is the remaining M4
+work.
+
 ---
 
 ## 15. Limitations and Risks
@@ -367,10 +383,13 @@ size is sufficient for *which* class of legal document.
 - Confidence scores are model self-reports and are advisory only.
 - The prototype lacks authentication and must not be exposed beyond a trusted
   local host as-is.
-- Blank detection currently recognizes only `{{}}`/`[[]]` markup, which real
-  firm templates do not use; templates lacking explicit markup detect zero
-  blanks until the multi-convention detector (FR-5.1–5.3,
-  `docs/blank-detection.md`) is implemented.
+- Blank detection now handles `{{}}`/`[[]]` markup **and** the Tier-2
+  deterministic firm conventions (underscores, brackets, checkboxes, `label :`,
+  sentinels) via `app/blank_detection.py`. Two limitations remain: the Tier-3
+  semantic cases (highlight-run intent, prose instructions, choice enums) and
+  OOXML-level `.docx` parsing (the yellow-highlight signal) are designed but not
+  implemented, so heuristic keys are a good auditable *first draft* a human
+  confirms at import, not a final answer (`docs/blank-detection.md`).
 
 ---
 
@@ -381,8 +400,8 @@ size is sufficient for *which* class of legal document.
 | M1 | Local pipeline: ingest → retrieve → fill → provenance | Implemented (prototype) |
 | M2 | Attorney Workspace + Developer Console | Implemented (prototype) |
 | M3 | `.docx` export | Implemented (prototype) |
-| M3.5 | Multi-convention blank detection + import normalization (FR-5.1–5.3) | Designed (`docs/blank-detection.md`), not yet implemented |
-| M4 | Evaluation run across multiple models on demo hardware | Pending models + data |
+| M3.5 | Multi-convention blank detection + import normalization (FR-5.1–5.3) | Tier-2 (deterministic) implemented (`app/blank_detection.py`); Tier-3 (LLM) + OOXML highlight designed |
+| M4 | Evaluation harness + run | Harness implemented & run (`eval/`); live 7B–70B comparison pending Ollama hardware |
 | M5 | Authentication / RBAC, encryption at rest | Future work |
 | M6 | DMS integration adapter (one target) | Future work |
 

@@ -9,12 +9,25 @@ in the case file is returned as NEEDS_REVIEW; the system never fabricates.
 from __future__ import annotations
 
 import uuid
-from typing import List
+from typing import Callable, List, Tuple
 
 from . import ollama_client, prompts
 from .ingest import IngestedDoc, ingest_folder, total_chars
 from .models import FieldSpec, FilledField, FillResult, NEEDS_REVIEW, TemplateInfo
 from .retrieval import auto_retriever
+
+# An extractor turns (model, fields, passages) into the model's JSON answer.
+# Injecting it (rather than hard-calling Ollama) keeps the grounding pipeline
+# testable offline and lets the evaluation harness swap in a baseline engine.
+Extractor = Callable[[str, List[FieldSpec], List[dict], float], Tuple[dict, float]]
+
+
+def _ollama_extractor(
+    model: str, fields: List[FieldSpec], passages: List[dict], temperature: float
+) -> Tuple[dict, float]:
+    system = prompts.SYSTEM_PROMPT
+    user = prompts.build_user_prompt(fields, passages)
+    return ollama_client.generate_json(model, system, user, temperature=temperature)
 
 
 def _retrieval_query(field: FieldSpec) -> str:
@@ -62,7 +75,9 @@ def fill(
     template: TemplateInfo,
     template_text: str,
     model: str,
+    extractor: Extractor | None = None,
 ) -> FillResult:
+    extractor = extractor or _ollama_extractor
     run = FillResult(
         run_id=uuid.uuid4().hex[:12],
         matter_id=matter_id,
@@ -108,10 +123,8 @@ def fill(
     passages_by_doc = {f"{i}": p["text"] for i, p in enumerate(passages)}
 
     # --- model inference (FR-6, FR-7, NFR-2) -----------------------------
-    system = prompts.SYSTEM_PROMPT
-    user = prompts.build_user_prompt(template.fields, passages)
     try:
-        parsed, elapsed = ollama_client.generate_json(model, system, user, temperature=0.0)
+        parsed, elapsed = extractor(model, template.fields, passages, 0.0)
         run.inference_seconds = round(elapsed, 3)
     except ollama_client.OllamaUnavailable as exc:
         # Degrade gracefully (NFR-3): mark everything for review, never crash.
