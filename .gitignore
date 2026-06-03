@@ -7,8 +7,9 @@ venv/
 
 # Node / frontend build
 frontend/node_modules/
-frontend/dist/
 frontend/.vite/
+# NOTE: frontend/dist/ is intentionally committed so the backend can serve the
+# UI with zero npm setup (see README "Running it"). Rebuild with `npm run build`.
 
 # Local run records (regenerated; not source)
 data/runs/*.json

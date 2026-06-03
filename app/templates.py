@@ -48,6 +48,29 @@ def detect_fields(text: str) -> List[FieldSpec]:
     return fields
 
 
+def prepare_template(text: str) -> Tuple[str, List[FieldSpec]]:
+    """
+    Resolve a template to (canonical_text, fields), the single source of truth
+    for both the blank count shown to the attorney and the text the filler fills.
+
+    Precedence:
+      1. If the template already uses canonical ``{{key}}`` / ``[[key]]`` markup,
+         honor it exactly (highest precision, zero guessing).
+      2. Otherwise run Tier-2 deterministic detection (``blank_detect``) to
+         normalize real firm conventions (underscores, brackets, checkboxes,
+         highlighted runs, empty table grids, sentinels) into canonical
+         ``{{key}}`` markup so the template no longer detects zero blanks.
+         (FR-5.1, FR-5.3)
+    """
+    mustache = detect_fields(text)
+    if mustache:
+        return text, mustache
+    from . import blank_detect
+
+    canonical_text = blank_detect.normalize(text)
+    return canonical_text, detect_fields(canonical_text)
+
+
 def read_template_text(path: str) -> Tuple[str, str]:
     """Return (kind, text) for a template file. Supports docx / txt / md.
 

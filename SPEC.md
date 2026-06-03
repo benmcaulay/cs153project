@@ -361,6 +361,19 @@ instrument. The intended protocol:
 This operationalizes the thesis: it produces evidence about *which* local model
 size is sufficient for *which* class of legal document.
 
+**Implemented.** A runnable harness in `eval/` realizes steps 2–4 against
+hand-labeled gold fixtures (`eval/gold/`), scoring each field as `correct`,
+`correct_abstention`, `fabrication`, `wrong_value`, or `miss`, with the
+**fabrication count** as the headline safety metric. It runs against pluggable
+engines (`--engine baseline | offline | ollama:<model>`) so the safety contract
+is measurable without a live model. Committed results and analysis are in
+`eval/results/` and `eval/README.md`. On the shipped gold set, the offline
+(runtime-down) path fabricated **0** values with **100%** correct abstention,
+and the naive baseline surfaced a real label-ambiguity defect (intake attorney
+mistaken for responsible attorney). A live 7B–70B comparison (step 5) is wired
+but not yet executed — it requires Ollama hardware (§8) and is the remaining M4
+work.
+
 ---
 
 ## 15. Limitations and Risks
@@ -391,7 +404,7 @@ size is sufficient for *which* class of legal document.
 | M2 | Attorney Workspace + Developer Console | Implemented (prototype) |
 | M3 | `.docx` export | Implemented (prototype) |
 | M3.5 | Multi-convention blank detection + import normalization (FR-5.1–5.2) | Implemented (Tier 1+2, `app/blank_detect.py`); Tier 3 LLM + review UI (FR-5.3) pending |
-| M4 | Evaluation run across multiple models on demo hardware | Pending models + data |
+| M4 | Evaluation harness + run | Harness implemented & run (`eval/`); live 7B–70B comparison pending Ollama hardware |
 | M5 | Authentication / RBAC, encryption at rest | Future work |
 | M6 | DMS integration adapter (one target) | Future work |
 

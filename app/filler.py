@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 import uuid
 from collections import Counter
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 from . import ollama_client, prompts
 from .ingest import IngestedDoc, ingest_folder, ocr_available, total_chars
@@ -21,6 +21,22 @@ from .retrieval import auto_retriever
 # Documents that extract to fewer than this many characters are almost certainly
 # unreadable (scanned/image PDFs needing OCR) rather than genuinely empty.
 _MIN_DOC_CHARS = 40
+
+# An extractor turns (model, fields, passages, temperature) into the model's JSON
+# answer. Injecting it (rather than hard-calling Ollama) keeps the grounding
+# pipeline testable offline and lets the evaluation harness swap in a baseline
+# engine. It may return (parsed, elapsed) or (parsed, elapsed, raw_text); the raw
+# text, when present, powers the no-output diagnostic.
+Extractor = Callable[[str, List[FieldSpec], List[dict], float], Tuple]
+
+
+def _ollama_extractor(
+    model: str, fields: List[FieldSpec], passages: List[dict], temperature: float
+) -> Tuple[dict, float, str]:
+    system = prompts.SYSTEM_PROMPT
+    user = prompts.build_user_prompt(fields, passages)
+    return ollama_client.generate_json(model, system, user, temperature=temperature)
+
 
 # Human-readable explanation for each needs-review reason (surfaced in the UI).
 REASON_LABELS = {
@@ -99,32 +115,6 @@ def _locate_evidence(evidence: str, passages: List[dict]) -> Tuple[Optional[str]
             if len(qset & hset) / len(qset) >= 0.75:
                 return _snippet_around(p["text"], evidence), p.get("document")
     return None, None
-
-
-def _is_grounded(quote: str, passages: List[str]) -> bool:
-    """Anti-hallucination check (FR-8), tolerant of minor model paraphrase.
-
-    A value is grounded if its supporting quote appears in a passage as a
-    normalized substring, OR (for a quote of several content words) if at least
-    three-quarters of its content tokens co-occur in a single passage. The
-    fuzzy arm keeps near-verbatim quotes from being wrongly discarded while
-    still rejecting fabricated values that don't track the source.
-    """
-    needle = " ".join(quote.lower().split())
-    if not needle:
-        return False
-    hay = [" ".join(p.lower().split()) for p in passages]
-    if any(needle in h for h in hay):
-        return True
-    q_tokens = [t for t in re.findall(r"[a-z0-9]+", needle) if len(t) > 2]
-    if len(q_tokens) < 3:  # too short to fuzzy-match without risking a false positive
-        return False
-    q_set = set(q_tokens)
-    for h in hay:
-        h_set = set(re.findall(r"[a-z0-9]+", h))
-        if len(q_set & h_set) / len(q_set) >= 0.75:
-            return True
-    return False
 
 
 def _normalize_key(s) -> str:
@@ -206,7 +196,9 @@ def fill(
     template: TemplateInfo,
     template_text: str,
     model: str,
+    extractor: Extractor | None = None,
 ) -> FillResult:
+    extractor = extractor or _ollama_extractor
     run = FillResult(
         run_id=uuid.uuid4().hex[:12],
         matter_id=matter_id,
@@ -254,13 +246,16 @@ def fill(
     fields_with_context = {k for k, hits in per_field.items() if hits}
     budget = min(max(16, len(template.fields) * 2), 30)
     passages = _select_passages(template.fields, per_field, budget)
-    passages_by_doc = {f"{i}": p["text"] for i, p in enumerate(passages)}
 
     # --- model inference (FR-6, FR-7, NFR-2) -----------------------------
-    system = prompts.SYSTEM_PROMPT
-    user = prompts.build_user_prompt(template.fields, passages)
+    # The extractor (real model or offline baseline) returns the JSON answer, and
+    # optionally the raw text for diagnostics.
     try:
-        parsed, elapsed, raw = ollama_client.generate_json(model, system, user, temperature=0.0)
+        result = extractor(model, template.fields, passages, 0.0)
+        if len(result) == 3:
+            parsed, elapsed, raw = result
+        else:
+            parsed, elapsed, raw = result[0], result[1], ""
         run.inference_seconds = round(elapsed, 3)
         run.raw_model_output = (raw or "")[:4000] or None
     except ollama_client.OllamaUnavailable as exc:
@@ -321,13 +316,13 @@ def fill(
 
     run.fields = filled
     run.message = _diagnostic_message(filled, empty_docs, run.retrieval_mode) or None
-    # If the model produced output but we couldn't use any of it, show a snippet
-    # so the mismatch is visible rather than a silent 0/N.
+    # If the extractor produced output but we couldn't use any of it, show a
+    # snippet so the mismatch is visible rather than a silent 0/N.
     if not any(f.found for f in filled):
         if run.raw_model_output:
             snippet = re.sub(r"\s+", " ", run.raw_model_output).strip()[:240]
             run.message = (run.message or "") + f" Raw model output (first 240 chars): {snippet}"
-        else:
+        elif run.raw_model_output is None:
             run.message = (run.message or "") + (
                 " The model returned an empty response — the prompt may exceed its "
                 "context window. Raise VERBATIM_NUM_CTX (or try a smaller matter)."

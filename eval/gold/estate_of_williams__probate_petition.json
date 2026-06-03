@@ -1,0 +1,16 @@
+{
+  "matter": "Estate of Williams",
+  "template_filename": "probate_petition.txt",
+  "note": "Every field here is grounded in the Estate of Williams intake. This pair tests recall on a fully-answerable matter.",
+  "expected": {
+    "court": "Probate Court of Marion County, Ohio",
+    "decedent_name": "Harold E. Williams",
+    "executor_name": "Eleanor Williams-Park",
+    "date_of_death": "January 28, 2024",
+    "place_of_death": "Fairhaven, Ohio",
+    "decedent_residence": "77 Chestnut Court, Fairhaven, OH 45011",
+    "will_date": "June 4, 2019",
+    "estate_value": "$1,250,000",
+    "executor_address": "1290 Birchwood Lane, Fairhaven, OH 45011"
+  }
+}
