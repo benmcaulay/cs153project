@@ -9,10 +9,6 @@ network endpoint Verbatim ever touches is an [Ollama](https://ollama.com)
 runtime bound to the local host. No privileged information, work product, or PHI
 leaves the machine.
 
-This repository implements the prototype described in `SPEC.md`. The web UI
-reuses the visual identity (steel-blue legal theme, logos, shadcn/ui component
-library) of the firm's existing front-end.
-
 ---
 
 ## What it does
