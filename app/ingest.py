@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Optional, Tuple
 
 SUPPORTED_EXTS = {".pdf", ".docx", ".txt", ".md"}
 
@@ -19,6 +19,7 @@ class Chunk:
     document: str  # source filename
     text: str
     index: int  # chunk index within the document
+    page: Optional[int] = None  # 1-based source page (PDFs); None when not paginated
 
 
 @dataclass
@@ -124,14 +125,14 @@ def ocr_available() -> bool:
     return _OCR_ENABLED and _tesseract_ok() and _poppler_ok()
 
 
-def ocr_pdf(path: str) -> str:
-    """Rasterize a PDF and OCR each page. Returns '' if OCR isn't available."""
+def _ocr_pdf_pages(path: str) -> List[str]:
+    """OCR a PDF, returning one text string per page ('' if OCR isn't available)."""
     try:
         import pytesseract
         from pdf2image import convert_from_path
     except Exception as exc:
         print(f"[ingest] OCR libraries unavailable ({exc}); install pytesseract + pdf2image.")
-        return ""
+        return []
     _configure_tesseract(pytesseract)
     kwargs = {"dpi": OCR_DPI}
     if _POPPLER_PATH:
@@ -143,14 +144,20 @@ def ocr_pdf(path: str) -> str:
             f"[ingest] could not rasterize {path} for OCR ({exc}); is poppler installed / "
             f"VERBATIM_POPPLER_PATH set to its bin folder?"
         )
-        return ""
+        return []
     pages: List[str] = []
     for img in images:
         try:
             pages.append(pytesseract.image_to_string(img))
         except Exception as exc:
             print(f"[ingest] OCR failed on a page of {path}: {exc}")
-    return "\n".join(pages).strip()
+            pages.append("")
+    return pages
+
+
+def ocr_pdf(path: str) -> str:
+    """Rasterize a PDF and OCR each page, joined. Returns '' if OCR isn't available."""
+    return "\n".join(_ocr_pdf_pages(path)).strip()
 
 
 def _with_ocr_fallback(text: str, path: str) -> str:
@@ -159,6 +166,29 @@ def _with_ocr_fallback(text: str, path: str) -> str:
         return text
     ocr = ocr_pdf(path)
     return ocr if len(ocr.strip()) > len(text.strip()) else text
+
+
+def _pdf_pages(path: str) -> List[str]:
+    """Per-page text of a PDF (so provenance can cite a page), with per-page OCR
+    fallback for scanned/encrypted files."""
+    texts: List[str] = []
+    try:
+        from pypdf import PdfReader
+
+        reader = PdfReader(path)
+        if reader.is_encrypted:
+            try:
+                reader.decrypt("")
+            except Exception:
+                pass
+        texts = [(p.extract_text() or "") for p in reader.pages]
+    except Exception as exc:
+        print(f"[ingest] pypdf could not extract {os.path.basename(path)} ({exc}); trying OCR.")
+    if sum(len(t.strip()) for t in texts) < OCR_MIN_CHARS and _OCR_ENABLED:
+        ocr = _ocr_pdf_pages(path)
+        if any(t.strip() for t in ocr):
+            return ocr
+    return texts
 
 
 def read_document(path: str) -> str:
@@ -172,7 +202,23 @@ def read_document(path: str) -> str:
     raise ValueError(f"unsupported extension: {ext}")
 
 
-def chunk_text(text: str, document: str, size: int = 1100, overlap: int = 200) -> List[Chunk]:
+def read_document_pages(path: str) -> List[Tuple[Optional[int], str]]:
+    """Return [(page, text), ...]. PDFs yield one entry per 1-based page so a
+    filled value can cite the page it came from; other formats are unpaginated
+    and yield a single (None, text) entry."""
+    ext = os.path.splitext(path)[1].lower()
+    if ext == ".pdf":
+        return [(i + 1, t) for i, t in enumerate(_pdf_pages(path))]
+    if ext == ".docx":
+        return [(None, _read_docx(path))]
+    if ext in (".txt", ".md"):
+        return [(None, _read_txt(path))]
+    raise ValueError(f"unsupported extension: {ext}")
+
+
+def chunk_text(
+    text: str, document: str, size: int = 1100, overlap: int = 200, page: Optional[int] = None
+) -> List[Chunk]:
     """Split into overlapping character windows, preferring paragraph breaks."""
     text = text.strip()
     if not text:
@@ -191,7 +237,7 @@ def chunk_text(text: str, document: str, size: int = 1100, overlap: int = 200) -
                 if cut > size * 0.5:
                     end = start + cut + len(sep)
                     break
-        chunks.append(Chunk(document=document, text=text[start:end].strip(), index=idx))
+        chunks.append(Chunk(document=document, text=text[start:end].strip(), index=idx, page=page))
         idx += 1
         if end >= n:
             break
@@ -210,14 +256,17 @@ def ingest_folder(folder: str) -> List[IngestedDoc]:
             if ext not in SUPPORTED_EXTS:
                 continue
             path = os.path.join(root, name)
-            try:
-                text = read_document(path)
-            except Exception as exc:  # best-effort; skip unreadable files
-                text = ""
-                print(f"[ingest] could not read {name}: {exc}")
             rel = os.path.relpath(path, folder)
-            doc = IngestedDoc(filename=rel, text=text, chunks=chunk_text(text, rel))
-            docs.append(doc)
+            try:
+                pages = read_document_pages(path)
+            except Exception as exc:  # best-effort; skip unreadable files
+                pages = []
+                print(f"[ingest] could not read {name}: {exc}")
+            chunks: List[Chunk] = []
+            for pg, ptext in pages:
+                chunks.extend(chunk_text(ptext, rel, page=pg))
+            full_text = "\n".join(t for _pg, t in pages)
+            docs.append(IngestedDoc(filename=rel, text=full_text, chunks=chunks))
     return docs
 
 

@@ -76,7 +76,7 @@ def _select_passages(fields, per_field: Dict[str, list], budget: int) -> List[di
                 dedup = (r.document, r.text[:80])
                 if dedup not in seen:
                     seen.add(dedup)
-                    out.append({"document": r.document, "text": r.text})
+                    out.append({"document": r.document, "text": r.text, "page": r.page})
                     if len(out) >= budget:
                         break
         rank += 1
@@ -93,8 +93,10 @@ def _snippet_around(text: str, needle: str, width: int = 180) -> str:
     return flat[max(0, i - 40):max(0, i - 40) + width].strip()
 
 
-def _locate_evidence(evidence: str, passages: List[dict]) -> Tuple[Optional[str], Optional[str]]:
-    """Find the first passage that grounds `evidence`; return (snippet, document).
+def _locate_evidence(
+    evidence: str, passages: List[dict]
+) -> Tuple[Optional[str], Optional[str], Optional[int]]:
+    """Find the first passage that grounds `evidence`; return (snippet, document, page).
 
     Grounding the *value* against the case file is the real anti-hallucination
     requirement (FR-8): a value the model didn't copy from a source is a defect,
@@ -103,18 +105,18 @@ def _locate_evidence(evidence: str, passages: List[dict]) -> Tuple[Optional[str]
     """
     needle = " ".join(evidence.lower().split())
     if not needle:
-        return None, None
+        return None, None, None
     for p in passages:
         if needle in " ".join(p["text"].lower().split()):
-            return _snippet_around(p["text"], evidence), p.get("document")
+            return _snippet_around(p["text"], evidence), p.get("document"), p.get("page")
     toks = [t for t in re.findall(r"[a-z0-9]+", needle) if len(t) > 2]
     if len(toks) >= 3:
         qset = set(toks)
         for p in passages:
             hset = set(re.findall(r"[a-z0-9]+", p["text"].lower()))
             if len(qset & hset) / len(qset) >= 0.75:
-                return _snippet_around(p["text"], evidence), p.get("document")
-    return None, None
+                return _snippet_around(p["text"], evidence), p.get("document"), p.get("page")
+    return None, None, None
 
 
 def _normalize_key(s) -> str:
@@ -299,15 +301,16 @@ def fill(
         # but isn't required — many models return values with no quote, and a
         # value that appears verbatim in a source is itself the proof.
         quote = (item.get("source_quote") or "").strip()
-        snippet, doc = _locate_evidence(value, passages)
+        snippet, doc, page = _locate_evidence(value, passages)
         if snippet is None and quote:
-            snippet, doc = _locate_evidence(quote, passages)
+            snippet, doc, page = _locate_evidence(quote, passages)
         if snippet is not None:
             filled.append(FilledField(
                 key=spec.key, label=spec.label, value=value, found=True,
                 confidence=_as_float(item.get("confidence")),
                 source_quote=(quote or snippet),
                 source_document=(item.get("source_document") or doc),
+                source_page=page,
                 review_reason="filled",
             ))
         else:

@@ -529,6 +529,7 @@ const ResultView = ({ result }: { result: FillResult }) => {
                   <Quote className="h-3 w-3 mt-0.5 shrink-0" />
                   <span>
                     “{f.source_quote}” — <span className="font-mono">{f.source_document}</span>
+                    {f.source_page ? <span className="font-mono">, p. {f.source_page}</span> : null}
                   </span>
                 </div>
               )}

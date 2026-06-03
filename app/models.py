@@ -69,6 +69,7 @@ class FilledField(BaseModel):
     confidence: Optional[float] = None  # advisory model self-report (§15)
     source_quote: Optional[str] = None  # short verbatim supporting quote
     source_document: Optional[str] = None  # originating document name
+    source_page: Optional[int] = None  # 1-based page in the source document (PDFs)
 
     # Why a blank was left for review, when it was (diagnostic, surfaced in UI):
     # "filled" | "no_context" | "model_blanked" | "ungrounded" | "missing_key"

@@ -45,6 +45,7 @@ export interface FilledField {
   confidence?: number | null;
   source_quote?: string | null;
   source_document?: string | null;
+  source_page?: number | null;
   admin_flag?: "correct" | "incorrect" | null;
   review_reason?: string | null;
 }

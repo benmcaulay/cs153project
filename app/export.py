@@ -45,8 +45,11 @@ def export_docx(title: str, filled_text: str, fields: List[FilledField]) -> byte
         if f.found:
             p.add_run(f.value)
             src = doc.add_paragraph()
+            cite = f.source_document or "unknown"
+            if f.source_page:
+                cite += f", p. {f.source_page}"
             q = src.add_run(
-                f'    source: "{f.source_quote or ""}" — {f.source_document or "unknown"}'
+                f'    source: "{f.source_quote or ""}" — {cite}'
             )
             q.italic = True
             q.font.size = Pt(8)

@@ -30,6 +30,7 @@ class Retrieved:
     document: str
     text: str
     score: float
+    page: Optional[int] = None
 
 
 # --------------------------------------------------------------------------- #
@@ -71,7 +72,7 @@ class _TfidfIndex:
     def query(self, text: str, k: int) -> List[Retrieved]:
         q = self._vec(_tokenize(text))
         scored = [
-            Retrieved(self.chunks[i].document, self.chunks[i].text, self._cosine(q, self.vectors[i]))
+            Retrieved(self.chunks[i].document, self.chunks[i].text, self._cosine(q, self.vectors[i]), self.chunks[i].page)
             for i in range(len(self.chunks))
         ]
         scored.sort(key=lambda r: r.score, reverse=True)
@@ -101,7 +102,7 @@ class _DenseIndex:
     def query(self, text: str, k: int) -> List[Retrieved]:
         qv = ollama_client.embed(self.model, [text])[0]
         scored = [
-            Retrieved(self.chunks[i].document, self.chunks[i].text, self._cosine(qv, self.vectors[i]))
+            Retrieved(self.chunks[i].document, self.chunks[i].text, self._cosine(qv, self.vectors[i]), self.chunks[i].page)
             for i in range(len(self.chunks))
         ]
         scored.sort(key=lambda r: r.score, reverse=True)
