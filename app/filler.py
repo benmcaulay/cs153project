@@ -8,26 +8,45 @@ in the case file is returned as NEEDS_REVIEW; the system never fabricates.
 """
 from __future__ import annotations
 
+import re
 import uuid
-from typing import Callable, List, Tuple
+from collections import Counter
+from typing import Callable, Dict, List, Optional, Tuple
 
 from . import ollama_client, prompts
-from .ingest import IngestedDoc, ingest_folder, total_chars
+from .ingest import IngestedDoc, ingest_folder, ocr_available, total_chars
 from .models import FieldSpec, FilledField, FillResult, NEEDS_REVIEW, TemplateInfo
 from .retrieval import auto_retriever
 
-# An extractor turns (model, fields, passages) into the model's JSON answer.
-# Injecting it (rather than hard-calling Ollama) keeps the grounding pipeline
-# testable offline and lets the evaluation harness swap in a baseline engine.
-Extractor = Callable[[str, List[FieldSpec], List[dict], float], Tuple[dict, float]]
+# Documents that extract to fewer than this many characters are almost certainly
+# unreadable (scanned/image PDFs needing OCR) rather than genuinely empty.
+_MIN_DOC_CHARS = 40
+
+# An extractor turns (model, fields, passages, temperature) into the model's JSON
+# answer. Injecting it (rather than hard-calling Ollama) keeps the grounding
+# pipeline testable offline and lets the evaluation harness swap in a baseline
+# engine. It may return (parsed, elapsed) or (parsed, elapsed, raw_text); the raw
+# text, when present, powers the no-output diagnostic.
+Extractor = Callable[[str, List[FieldSpec], List[dict], float], Tuple]
 
 
 def _ollama_extractor(
     model: str, fields: List[FieldSpec], passages: List[dict], temperature: float
-) -> Tuple[dict, float]:
+) -> Tuple[dict, float, str]:
     system = prompts.SYSTEM_PROMPT
     user = prompts.build_user_prompt(fields, passages)
     return ollama_client.generate_json(model, system, user, temperature=temperature)
+
+
+# Human-readable explanation for each needs-review reason (surfaced in the UI).
+REASON_LABELS = {
+    "no_context": "no matching passage retrieved",
+    "model_blanked": "model found nothing to ground in the sources",
+    "ungrounded": "value dropped — quote not found in sources",
+    "missing_key": "model omitted this field",
+    "model_unreachable": "model runtime unavailable",
+    "no_documents": "no readable case text",
+}
 
 
 def _retrieval_query(field: FieldSpec) -> str:
@@ -37,35 +56,137 @@ def _retrieval_query(field: FieldSpec) -> str:
     return " ".join(parts)
 
 
-def _validate_grounding(field: FilledField, passages_by_doc: dict) -> FilledField:
-    """
-    Enforce the anti-hallucination contract (FR-8): a value only counts as
-    grounded if its supporting quote actually appears in the retrieved source.
-    Otherwise it is downgraded to NEEDS_REVIEW.
-    """
-    if not field.found or field.value.strip().upper() == NEEDS_REVIEW or not field.value.strip():
-        field.found = False
-        field.value = NEEDS_REVIEW
-        field.source_quote = None
-        field.source_document = None
-        return field
+def _select_passages(fields, per_field: Dict[str, list], budget: int) -> List[dict]:
+    """Interleave each field's top hits by rank so no field is starved of context.
 
-    quote = (field.source_quote or "").strip()
-    if not quote:
-        field.found = False
-        field.value = NEEDS_REVIEW
-        field.source_document = None
-        return field
+    The previous strategy filled a single global pool field-by-field and then
+    truncated it, which let the first few fields consume every slot and left the
+    rest with no relevant passages at all. Round-robin by rank guarantees each
+    field contributes its best passages before any field contributes its second.
+    """
+    seen = set()
+    out: List[dict] = []
+    rank = 0
+    max_rank = max((len(v) for v in per_field.values()), default=0)
+    while rank < max_rank and len(out) < budget:
+        for f in fields:
+            hits = per_field.get(f.key, [])
+            if rank < len(hits):
+                r = hits[rank]
+                dedup = (r.document, r.text[:80])
+                if dedup not in seen:
+                    seen.add(dedup)
+                    out.append({"document": r.document, "text": r.text})
+                    if len(out) >= budget:
+                        break
+        rank += 1
+    return out
 
-    # The quote must be present (case-insensitively) in some retrieved passage.
-    needle = " ".join(quote.lower().split())
-    grounded = any(needle in " ".join(p.lower().split()) for p in passages_by_doc.values())
-    if not grounded:
-        field.found = False
-        field.value = NEEDS_REVIEW
-        field.source_quote = None
-        field.source_document = None
-    return field
+
+def _snippet_around(text: str, needle: str, width: int = 180) -> str:
+    """A short, readable window of `text` around the first word of `needle`."""
+    flat = re.sub(r"\s+", " ", text).strip()
+    words = re.findall(r"[A-Za-z0-9]+", needle.lower())
+    i = flat.lower().find(words[0]) if words else -1
+    if i < 0:
+        return flat[:width].strip()
+    return flat[max(0, i - 40):max(0, i - 40) + width].strip()
+
+
+def _locate_evidence(evidence: str, passages: List[dict]) -> Tuple[Optional[str], Optional[str]]:
+    """Find the first passage that grounds `evidence`; return (snippet, document).
+
+    Grounding the *value* against the case file is the real anti-hallucination
+    requirement (FR-8): a value the model didn't copy from a source is a defect,
+    whether or not the model supplied a quote. Exact (normalized) containment
+    first, then a high token-overlap fallback for multi-word values.
+    """
+    needle = " ".join(evidence.lower().split())
+    if not needle:
+        return None, None
+    for p in passages:
+        if needle in " ".join(p["text"].lower().split()):
+            return _snippet_around(p["text"], evidence), p.get("document")
+    toks = [t for t in re.findall(r"[a-z0-9]+", needle) if len(t) > 2]
+    if len(toks) >= 3:
+        qset = set(toks)
+        for p in passages:
+            hset = set(re.findall(r"[a-z0-9]+", p["text"].lower()))
+            if len(qset & hset) / len(qset) >= 0.75:
+                return _snippet_around(p["text"], evidence), p.get("document")
+    return None, None
+
+
+def _normalize_key(s) -> str:
+    return re.sub(r"[^a-z0-9]+", "", str(s).lower())
+
+
+def _index_response(parsed, specs) -> dict:
+    """Map each template field to the model's answer, tolerant of output shape.
+
+    Models don't always return the agreed `{"fields":[{"key":...}]}`: some emit a
+    flat `{key: value}` object, a bare list, or key each item by its label rather
+    than its key. We collect items from any of these shapes and resolve each
+    field by key first, then by label — so a well-meaning but off-schema response
+    fills blanks instead of being silently dropped as "model omitted this field".
+    """
+    items: List[dict] = []
+    if isinstance(parsed, dict) and isinstance(parsed.get("fields"), list):
+        items = [it for it in parsed["fields"] if isinstance(it, dict)]
+    elif isinstance(parsed, list):
+        items = [it for it in parsed if isinstance(it, dict)]
+    elif isinstance(parsed, dict):
+        for k, v in parsed.items():
+            if k == "fields":
+                continue
+            if isinstance(v, dict):
+                it = dict(v)
+                it.setdefault("key", k)
+                items.append(it)
+            elif isinstance(v, (str, int, float)):
+                items.append({"key": k, "value": v, "found": True})
+
+    lookup: dict = {}
+    for it in items:
+        for alias in (it.get("key"), it.get("field"), it.get("name"), it.get("label")):
+            if alias:
+                lookup.setdefault(_normalize_key(alias), it)
+
+    resolved: dict = {}
+    for spec in specs:
+        for cand in (spec.key, spec.label):
+            it = lookup.get(_normalize_key(cand))
+            if it is not None:
+                resolved[spec.key] = it
+                break
+    return resolved
+
+
+def _diagnostic_message(filled: List[FilledField], empty_docs: List[str], mode: str) -> str:
+    """Explain *why* blanks were left for review, so 0/N is never a mystery."""
+    parts: List[str] = []
+    if empty_docs:
+        shown = ", ".join(empty_docs[:5]) + ("…" if len(empty_docs) > 5 else "")
+        note = (
+            f"{len(empty_docs)} document(s) extracted no readable text "
+            f"(likely scanned PDFs needing OCR): {shown}."
+        )
+        if not ocr_available():
+            note += (
+                " OCR isn't available on this host — install Tesseract and poppler "
+                "to read scanned PDFs automatically."
+            )
+        parts.append(note)
+    counts = Counter(f.review_reason for f in filled if not f.found and f.review_reason)
+    if counts:
+        breakdown = "; ".join(f"{REASON_LABELS.get(r, r)}: {n}" for r, n in counts.most_common())
+        parts.append(f"Needs-review breakdown — {breakdown}.")
+    if counts.get("no_context") and mode == "lexical":
+        parts.append(
+            "Retrieval is lexical; installing an embedding model "
+            "(e.g. `ollama pull nomic-embed-text`) enables semantic matching."
+        )
+    return " ".join(parts)
 
 
 def fill(
@@ -96,12 +217,20 @@ def fill(
 
     # --- ingest + retrieve (FR-2, FR-3) -----------------------------------
     docs: List[IngestedDoc] = ingest_folder(matter_folder)
+    empty_docs = [d.filename for d in docs if len(d.text.strip()) < _MIN_DOC_CHARS]
     all_chunks = [c for d in docs for c in d.chunks]
     if not all_chunks:
         run.status = "error"
-        run.message = "No readable case documents found in the matter folder."
+        hint = ""
+        if empty_docs:
+            hint = (
+                f" {len(empty_docs)} file(s) extracted no readable text "
+                f"(likely scanned PDFs needing OCR): {', '.join(empty_docs[:5])}."
+            )
+        run.message = "No readable case text found in the matter folder." + hint
         run.fields = [
-            FilledField(key=f.key, label=f.label, value=NEEDS_REVIEW, found=False)
+            FilledField(key=f.key, label=f.label, value=NEEDS_REVIEW, found=False,
+                        review_reason="no_documents")
             for f in template.fields
         ]
         run.filled_text = _assemble(template_text, run.fields, template.fields)
@@ -110,22 +239,25 @@ def fill(
     retriever = auto_retriever(all_chunks)
     run.retrieval_mode = retriever.mode
 
-    passages: List[dict] = []
-    seen = set()
-    for f in template.fields:
-        for r in retriever.retrieve(_retrieval_query(f), k=4):
-            key = (r.document, r.text[:80])
-            if key in seen:
-                continue
-            seen.add(key)
-            passages.append({"document": r.document, "text": r.text})
-    passages = passages[:14]  # cap context for smaller models
-    passages_by_doc = {f"{i}": p["text"] for i, p in enumerate(passages)}
+    # Retrieve per field, then interleave by rank so every field gets context
+    # (a single global pool let early fields starve the rest — a prime cause of
+    # an all-needs-review result). Budget scales with the number of blanks.
+    per_field = {f.key: retriever.retrieve(_retrieval_query(f), k=4) for f in template.fields}
+    fields_with_context = {k for k, hits in per_field.items() if hits}
+    budget = min(max(16, len(template.fields) * 2), 30)
+    passages = _select_passages(template.fields, per_field, budget)
 
     # --- model inference (FR-6, FR-7, NFR-2) -----------------------------
+    # The extractor (real model or offline baseline) returns the JSON answer, and
+    # optionally the raw text for diagnostics.
     try:
-        parsed, elapsed = extractor(model, template.fields, passages, 0.0)
+        result = extractor(model, template.fields, passages, 0.0)
+        if len(result) == 3:
+            parsed, elapsed, raw = result
+        else:
+            parsed, elapsed, raw = result[0], result[1], ""
         run.inference_seconds = round(elapsed, 3)
+        run.raw_model_output = (raw or "")[:4000] or None
     except ollama_client.OllamaUnavailable as exc:
         # Degrade gracefully (NFR-3): mark everything for review, never crash.
         kind = getattr(exc, "kind", "error")
@@ -133,29 +265,68 @@ def fill(
         run.message = str(exc)
         print(f"[fill] inference failed (kind={kind}) model={model}: {exc}")
         run.fields = [
-            FilledField(key=f.key, label=f.label, value=NEEDS_REVIEW, found=False)
+            FilledField(key=f.key, label=f.label, value=NEEDS_REVIEW, found=False,
+                        review_reason="model_unreachable")
             for f in template.fields
         ]
         run.filled_text = _assemble(template_text, run.fields, template.fields)
         return run.recount()
 
     # --- assemble + validate provenance (FR-7, FR-8) ----------------------
-    by_key = {item.get("key"): item for item in parsed.get("fields", []) if isinstance(item, dict)}
+    # Classify every blank's outcome so an all-needs-review result is explained:
+    # the field can be filled, or left for review because the model omitted it,
+    # blanked it, had no retrieved context, or gave a value we couldn't ground.
+    resolved = _index_response(parsed, template.fields)
     filled: List[FilledField] = []
     for spec in template.fields:
-        item = by_key.get(spec.key, {})
-        ff = FilledField(
-            key=spec.key,
-            label=spec.label,
-            value=str(item.get("value", NEEDS_REVIEW)),
-            found=bool(item.get("found", False)),
-            confidence=_as_float(item.get("confidence")),
-            source_quote=(item.get("source_quote") or None),
-            source_document=(item.get("source_document") or None),
+        item = resolved.get(spec.key)
+        if item is None:
+            filled.append(FilledField(key=spec.key, label=spec.label, value=NEEDS_REVIEW,
+                                      found=False, review_reason="missing_key"))
+            continue
+
+        value = str(item.get("value", NEEDS_REVIEW)).strip()
+        model_filled = (
+            bool(item.get("found", False)) and value and value.upper() != NEEDS_REVIEW
         )
-        filled.append(_validate_grounding(ff, passages_by_doc))
+        if not model_filled:
+            reason = "no_context" if spec.key not in fields_with_context else "model_blanked"
+            filled.append(FilledField(key=spec.key, label=spec.label, value=NEEDS_REVIEW,
+                                      found=False, review_reason=reason))
+            continue
+
+        # Ground the VALUE in the case file (FR-8). A model-supplied quote helps
+        # but isn't required — many models return values with no quote, and a
+        # value that appears verbatim in a source is itself the proof.
+        quote = (item.get("source_quote") or "").strip()
+        snippet, doc = _locate_evidence(value, passages)
+        if snippet is None and quote:
+            snippet, doc = _locate_evidence(quote, passages)
+        if snippet is not None:
+            filled.append(FilledField(
+                key=spec.key, label=spec.label, value=value, found=True,
+                confidence=_as_float(item.get("confidence")),
+                source_quote=(quote or snippet),
+                source_document=(item.get("source_document") or doc),
+                review_reason="filled",
+            ))
+        else:
+            filled.append(FilledField(key=spec.key, label=spec.label, value=NEEDS_REVIEW,
+                                      found=False, review_reason="ungrounded"))
 
     run.fields = filled
+    run.message = _diagnostic_message(filled, empty_docs, run.retrieval_mode) or None
+    # If the extractor produced output but we couldn't use any of it, show a
+    # snippet so the mismatch is visible rather than a silent 0/N.
+    if not any(f.found for f in filled):
+        if run.raw_model_output:
+            snippet = re.sub(r"\s+", " ", run.raw_model_output).strip()[:240]
+            run.message = (run.message or "") + f" Raw model output (first 240 chars): {snippet}"
+        elif run.raw_model_output is None:
+            run.message = (run.message or "") + (
+                " The model returned an empty response — the prompt may exceed its "
+                "context window. Raise VERBATIM_NUM_CTX (or try a smaller matter)."
+            )
     run.filled_text = _assemble(template_text, filled, template.fields)
     return run.recount()
 

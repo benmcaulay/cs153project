@@ -46,10 +46,119 @@ def _read_docx(path: str) -> str:
 
 
 def _read_pdf(path: str) -> str:
-    from pypdf import PdfReader
+    text = ""
+    try:
+        from pypdf import PdfReader
 
-    reader = PdfReader(path)
-    return "\n".join((page.extract_text() or "") for page in reader.pages)
+        reader = PdfReader(path)
+        if reader.is_encrypted:
+            # Many e-filed / "signed" PDFs are encrypted with an empty user
+            # password; decrypt needs the `cryptography` package for AES.
+            try:
+                reader.decrypt("")
+            except Exception:
+                pass
+        text = "\n".join((page.extract_text() or "") for page in reader.pages)
+    except Exception as exc:
+        # Encrypted-without-cryptography, password-protected, or corrupt: don't
+        # abandon the file — fall through to OCR, which can often still render it.
+        print(f"[ingest] pypdf could not extract {os.path.basename(path)} ({exc}); trying OCR.")
+    # Scanned/image (or unreadable) PDFs have no usable text layer — try OCR (FR-1).
+    return _with_ocr_fallback(text, path)
+
+
+# --------------------------------------------------------------------------- #
+# OCR fallback for scanned PDFs (FR-1). Optional + graceful: if Tesseract /
+# poppler aren't installed, extraction simply returns empty and the fill's
+# diagnostic flags the document — nothing crashes (NFR-3, NFR-5).
+# --------------------------------------------------------------------------- #
+OCR_MIN_CHARS = 40  # below this a PDF is treated as scanned and OCR is attempted
+OCR_DPI = int(os.environ.get("VERBATIM_OCR_DPI", "200"))
+_OCR_ENABLED = os.environ.get("VERBATIM_OCR", "1") != "0"
+# Optional explicit binary locations, so a Windows host needn't edit PATH:
+#   VERBATIM_TESSERACT_CMD = C:\Program Files\Tesseract-OCR\tesseract.exe
+#   VERBATIM_POPPLER_PATH  = C:\poppler-24.08.0\Library\bin
+_TESSERACT_CMD = os.environ.get("VERBATIM_TESSERACT_CMD")
+_POPPLER_PATH = os.environ.get("VERBATIM_POPPLER_PATH")
+# Where eng.traineddata lives, if not alongside tesseract.exe (e.g. a separate
+# tessdata folder): VERBATIM_TESSDATA_DIR = D:\Program Files\tessdata
+_TESSDATA_DIR = os.environ.get("VERBATIM_TESSDATA_DIR")
+
+
+def _configure_tesseract(pytesseract) -> None:
+    if _TESSERACT_CMD:
+        pytesseract.pytesseract.tesseract_cmd = _TESSERACT_CMD
+    if _TESSDATA_DIR:
+        os.environ["TESSDATA_PREFIX"] = _TESSDATA_DIR
+
+
+def _tesseract_ok() -> bool:
+    try:
+        import pytesseract
+        from pdf2image import convert_from_path  # noqa: F401
+
+        _configure_tesseract(pytesseract)
+        pytesseract.get_tesseract_version()
+        return True
+    except Exception:
+        return False
+
+
+def _poppler_ok() -> bool:
+    """Verify poppler's pdftoppm is reachable — OCR rasterization needs it, and
+    its absence is the most common reason OCR silently produces nothing."""
+    import shutil
+
+    exe = "pdftoppm"
+    if _POPPLER_PATH:
+        win = os.path.join(_POPPLER_PATH, exe + ".exe")
+        nix = os.path.join(_POPPLER_PATH, exe)
+        if os.path.isfile(win) or os.path.isfile(nix):
+            return True
+        return shutil.which(exe, path=_POPPLER_PATH) is not None
+    return shutil.which(exe) is not None or shutil.which("pdfinfo") is not None
+
+
+def ocr_available() -> bool:
+    """True only if OCR can actually run: enabled, Tesseract, AND poppler."""
+    return _OCR_ENABLED and _tesseract_ok() and _poppler_ok()
+
+
+def ocr_pdf(path: str) -> str:
+    """Rasterize a PDF and OCR each page. Returns '' if OCR isn't available."""
+    try:
+        import pytesseract
+        from pdf2image import convert_from_path
+    except Exception as exc:
+        print(f"[ingest] OCR libraries unavailable ({exc}); install pytesseract + pdf2image.")
+        return ""
+    _configure_tesseract(pytesseract)
+    kwargs = {"dpi": OCR_DPI}
+    if _POPPLER_PATH:
+        kwargs["poppler_path"] = _POPPLER_PATH
+    try:
+        images = convert_from_path(path, **kwargs)
+    except Exception as exc:
+        print(
+            f"[ingest] could not rasterize {path} for OCR ({exc}); is poppler installed / "
+            f"VERBATIM_POPPLER_PATH set to its bin folder?"
+        )
+        return ""
+    pages: List[str] = []
+    for img in images:
+        try:
+            pages.append(pytesseract.image_to_string(img))
+        except Exception as exc:
+            print(f"[ingest] OCR failed on a page of {path}: {exc}")
+    return "\n".join(pages).strip()
+
+
+def _with_ocr_fallback(text: str, path: str) -> str:
+    """Use OCR text when the native PDF text layer is empty/negligible."""
+    if len(text.strip()) >= OCR_MIN_CHARS or not _OCR_ENABLED:
+        return text
+    ocr = ocr_pdf(path)
+    return ocr if len(ocr.strip()) > len(text.strip()) else text
 
 
 def read_document(path: str) -> str:

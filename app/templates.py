@@ -56,35 +56,38 @@ def prepare_template(text: str) -> Tuple[str, List[FieldSpec]]:
     Precedence:
       1. If the template already uses canonical ``{{key}}`` / ``[[key]]`` markup,
          honor it exactly (highest precision, zero guessing).
-      2. Otherwise run Tier-2 deterministic detection (``blank_detection``) to
+      2. Otherwise run Tier-2 deterministic detection (``blank_detect``) to
          normalize real firm conventions (underscores, brackets, checkboxes,
-         ``Label :`` pairs, sentinels) into canonical ``{{key}}`` markup so the
-         template no longer detects zero blanks. (FR-5.1, FR-5.3)
+         highlighted runs, empty table grids, sentinels) into canonical
+         ``{{key}}`` markup so the template no longer detects zero blanks.
+         (FR-5.1, FR-5.3)
     """
     mustache = detect_fields(text)
     if mustache:
         return text, mustache
-    from .blank_detection import normalize
+    from . import blank_detect
 
-    canonical_text, fields, _candidates = normalize(text)
-    return canonical_text, fields
+    canonical_text = blank_detect.normalize(text)
+    return canonical_text, detect_fields(canonical_text)
 
 
 def read_template_text(path: str) -> Tuple[str, str]:
-    """Return (kind, text) for a template file. Supports docx / txt / md."""
+    """Return (kind, text) for a template file. Supports docx / txt / md.
+
+    Blanks authored in real-world conventions (underscores, brackets, checkboxes,
+    highlighted runs, empty table grids, ...) are normalized to canonical
+    {{key | instruction}} markup here, so the rest of the pipeline sees one
+    format (FR-5.1, FR-5.2; see app/blank_detect.py and docs/blank-detection.md).
+    """
+    from . import blank_detect
+
     ext = os.path.splitext(path)[1].lower()
     if ext == ".docx":
-        from docx import Document
-
-        doc = Document(path)
-        parts = [p.text for p in doc.paragraphs]
-        for table in doc.tables:
-            for row in table.rows:
-                parts.append("\t".join(cell.text for cell in row.cells))
-        return "docx", "\n".join(parts)
+        raw = blank_detect.read_docx_text(path)
+        return "docx", blank_detect.normalize(raw)
     if ext in (".txt", ".md"):
         with open(path, "r", encoding="utf-8", errors="replace") as fh:
-            return ext.lstrip("."), fh.read()
+            return ext.lstrip("."), blank_detect.normalize(fh.read())
     raise ValueError(f"unsupported template type: {ext}")
 
 

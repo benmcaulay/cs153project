@@ -31,6 +31,12 @@ export interface TemplateInfo {
   style?: string | null;
 }
 
+export interface DocText {
+  filename: string;
+  chars: number;
+  text: string;
+}
+
 export interface FilledField {
   key: string;
   label: string;
@@ -40,6 +46,7 @@ export interface FilledField {
   source_quote?: string | null;
   source_document?: string | null;
   admin_flag?: "correct" | "incorrect" | null;
+  review_reason?: string | null;
 }
 
 export interface FillResult {
@@ -61,6 +68,7 @@ export interface FillResult {
   retrieval_mode: string;
   status: string;
   message?: string | null;
+  raw_model_output?: string | null;
 }
 
 export interface OllamaModel {
@@ -69,6 +77,7 @@ export interface OllamaModel {
   family?: string;
   parameter_size?: string;
   quantization?: string;
+  embedding?: boolean;
 }
 
 export interface ModelStyleStats {
@@ -103,16 +112,23 @@ export const api = {
 
   templates: () => fetch(`${BASE}/templates`).then(j<TemplateInfo[]>),
 
+  matterText: (id: string) =>
+    fetch(`${BASE}/matters/${id}/text`).then(j<DocText[]>),
+
+  templateText: (id: string) =>
+    fetch(`${BASE}/templates/${id}/text`).then(j<{ text: string }>),
+
   models: () =>
     fetch(`${BASE}/models`).then(
       j<{ available: boolean; models: OllamaModel[]; message?: string }>
     ),
 
-  fill: (matter_id: string, template_id: string, model: string) =>
+  fill: (matter_id: string, template_id: string, model: string, signal?: AbortSignal) =>
     fetch(`${BASE}/fill`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ matter_id, template_id, model }),
+      signal,
     }).then(j<FillResult>),
 
   runs: () => fetch(`${BASE}/runs`).then(j<FillResult[]>),

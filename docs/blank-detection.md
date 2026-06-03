@@ -119,6 +119,30 @@ a good first draft" — a far lower bar, and it's auditable.
 }
 ```
 
+## Implementation status
+
+**Tier 1 (markup) and Tier 2 (deterministic) are implemented** in
+`app/blank_detect.py`, wired into `app/templates.py:read_template_text`.
+Normalization rewrites every detected blank to canonical `{{key | instruction}}`
+at read time, so detection, filling, and provenance work unchanged. The `.docx`
+reader operates at the OOXML run level, preserving the yellow-highlight signal.
+
+Detected on the example templates (previously **0** for all):
+
+| Template | Blanks detected | Primary signals |
+|----------|-----------------|-----------------|
+| Allstate Depo SUR | 10 | highlighted runs |
+| Depo SUR | 10 | highlighted runs |
+| Affidavit of Heirs | 36 | underscore fill-lines + empty table columns |
+
+Sample templates (`demand_letter` 14, `engagement_letter` 9, `probate_petition`
+9) are unchanged — existing markup is protected and signature underscores that
+hug a `{{field}}` are suppressed. Covered by `tests/test_blank_detect.py`.
+
+**Not yet implemented:** Tier 3 (LLM inference for free-form ALL-CAPS sentinels,
+inline prose instructions, choice prompts), the import review screen (FR-5.3),
+and legacy binary `.doc` parsing (only `.docx`/`.txt`/`.md` today).
+
 ## Concrete next steps
 1. Parse `.docx`/`.doc` at the OOXML level so the **yellow-highlight** signal
    (the firm's strongest intentional marker) survives. Don't detect on flattened

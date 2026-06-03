@@ -70,6 +70,11 @@ class FilledField(BaseModel):
     source_quote: Optional[str] = None  # short verbatim supporting quote
     source_document: Optional[str] = None  # originating document name
 
+    # Why a blank was left for review, when it was (diagnostic, surfaced in UI):
+    # "filled" | "no_context" | "model_blanked" | "ungrounded" | "missing_key"
+    # | "model_unreachable" | "no_documents"
+    review_reason: Optional[str] = None
+
     # Administrator evaluation flag (FR-13): "correct" | "incorrect" | None
     admin_flag: Optional[str] = None
 
@@ -101,6 +106,10 @@ class FillResult(BaseModel):
     retrieval_mode: str = "lexical"  # "dense" | "lexical"
     status: str = "ok"  # "ok" | "model_unreachable" | "error"
     message: Optional[str] = None
+
+    # Truncated raw model response, kept for diagnosis when output doesn't parse
+    # or doesn't match the expected schema (local-only, like the rest of the run).
+    raw_model_output: Optional[str] = None
 
     def recount(self) -> "FillResult":
         self.blanks_total = len(self.fields)

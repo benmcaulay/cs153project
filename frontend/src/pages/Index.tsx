@@ -3,6 +3,7 @@ import Header from "@/components/Header";
 import AttorneyWorkspace from "@/components/AttorneyWorkspace";
 import DeveloperConsole from "@/components/DeveloperConsole";
 import Library from "@/components/Library";
+import { FillProvider } from "@/components/FillContext";
 import { Scale, Wrench, FolderUp, ShieldCheck, ShieldOff } from "lucide-react";
 import { api } from "@/api/client";
 
@@ -16,7 +17,7 @@ const SURFACE_TITLE: Record<Surface, string> = {
 
 const SURFACE_BLURB: Record<Surface, string> = {
   attorney:
-    "Transcribe facts from a matter's case file into a firm template — grounded, provenance-backed, and private.",
+    "Transcribe facts from a matter's case file into a private, provenance-backed template.",
   library:
     "Upload case documents into a matter and add firm templates. Nothing leaves this host.",
   developer:
@@ -58,6 +59,7 @@ const Index = () => {
   );
 
   return (
+    <FillProvider>
     <div className="min-h-screen bg-background">
       <Header right={SurfaceToggle} />
 
@@ -67,7 +69,7 @@ const Index = () => {
             <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-2">
               {SURFACE_TITLE[surface]}
             </h1>
-            <p className="text-muted-foreground text-base md:text-lg max-w-2xl">
+            <p className="text-muted-foreground text-base md:text-lg">
               {SURFACE_BLURB[surface]}
             </p>
           </div>
@@ -95,6 +97,7 @@ const Index = () => {
         {surface === "developer" && <DeveloperConsole />}
       </div>
     </div>
+    </FillProvider>
   );
 };
 

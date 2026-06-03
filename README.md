@@ -68,7 +68,7 @@ template ({{blanks}} / [[blanks]]) ─┘                          │
 | `ingest.py` | Read pdf/docx/txt/md, overlapping chunking | FR-1, FR-2 |
 | `retrieval.py` | Dense (Ollama embeddings) retrieval with pure-Python TF-IDF fallback | FR-3 |
 | `templates.py` | Detect `{{key}}` / `[[key]]` / `{{key \| instruction}}`, labels, fill; `prepare_template` normalization | FR-4, FR-5 |
-| `blank_detection.py` | Tier-2 deterministic detection of real firm conventions (underscores, brackets, checkboxes, `label :`, sentinels) → canonical markup | FR-5.1, FR-5.3 |
+| `blank_detect.py` | Tier-2 deterministic detection of real-world blank conventions (underscores, brackets, checkboxes, `XXX`, `label :`, highlighted runs, empty table grids) → normalize to canonical markup | FR-5.1, FR-5.2, FR-5.3 |
 | `ollama_client.py` | Local-only runtime client; model list, JSON-mode generation, graceful degradation | FR-11, NFR-1/2/3 |
 | `filler.py` | Orchestrate fill, provenance validation, anti-hallucination | FR-6/7/8 |
 | `export.py` | `.docx` export with provenance appendix + review notice | FR-10 |
@@ -98,6 +98,27 @@ pip install -r requirements.txt
 The API is now serving. With a built frontend present (step 3) it also serves
 the UI at the same origin.
 
+**Scanned PDFs (optional OCR).** Image-only PDFs have no text layer. Verbatim
+will OCR them automatically if Tesseract + poppler are installed:
+
+```bash
+# macOS:   brew install tesseract poppler
+# Ubuntu:  sudo apt-get install tesseract-ocr poppler-utils
+# Windows: install Tesseract (UB-Mannheim) + poppler, add both to PATH
+```
+
+Without them, scanned documents extract no text and the fill diagnostic flags
+them. Disable OCR entirely with `VERBATIM_OCR=0`.
+
+If you'd rather not edit PATH (handy on Windows), point Verbatim straight at the
+binaries — the poppler bin is the nested `Library\bin` folder of the release:
+
+```powershell
+$env:VERBATIM_TESSERACT_CMD = "C:\Program Files\Tesseract-OCR\tesseract.exe"
+$env:VERBATIM_POPPLER_PATH  = "C:\poppler-24.08.0\Library\bin"
+./run.sh
+```
+
 ### 2. Local model (for real fills)
 
 Install [Ollama](https://ollama.com) and pull a demo-sized model:
@@ -110,6 +131,11 @@ ollama pull nomic-embed-text     # optional: enables dense retrieval
 Verbatim talks only to `http://localhost:11434` (override with `OLLAMA_HOST`).
 Without Ollama running, the app still works end-to-end — every field returns as
 `NEEDS_REVIEW` with a clear "runtime offline" status.
+
+**Large matters:** a multi-document matter can exceed Ollama's default context
+window, after which the model returns nothing and every field reads as review.
+Verbatim requests `num_ctx=8192` by default; raise it for big matters with
+`VERBATIM_NUM_CTX` (more memory) or use a smaller matter.
 
 ### 3. Frontend
 

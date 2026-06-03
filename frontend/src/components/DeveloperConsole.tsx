@@ -53,11 +53,6 @@ const DeveloperConsole = () => {
           <Layers className="mr-2 h-5 w-5 text-muted-foreground" />
           Developer Console
         </CardTitle>
-        <CardDescription>
-          Model management, template styling, and accuracy instrumentation —
-          confined to this surface and never shown in the Attorney Workspace
-          (FR-15).
-        </CardDescription>
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="models">

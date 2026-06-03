@@ -1,5 +1,3 @@
-import { ShieldCheck } from "lucide-react";
-
 interface HeaderProps {
   right?: React.ReactNode;
 }
@@ -27,10 +25,6 @@ const Header = ({ right }: HeaderProps) => {
 
           <div className="flex items-center gap-4">
             {right}
-            <div className="hidden lg:flex items-center gap-2 text-muted-foreground">
-              <ShieldCheck className="h-4 w-4 text-green-600" />
-              <span className="text-xs font-medium">On-prem · No data leaves host</span>
-            </div>
           </div>
         </div>
       </div>

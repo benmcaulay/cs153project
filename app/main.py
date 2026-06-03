@@ -62,6 +62,34 @@ def get_templates():
     return catalog.list_templates()
 
 
+@app.get("/api/matters/{matter_id}/text")
+def get_matter_text(matter_id: str):
+    """Extracted text of each case document — what the model actually sees.
+
+    Lets an attorney inspect ingestion (e.g. confirm a scanned/encrypted PDF was
+    read, or spot an empty one) right from the workspace."""
+    from .ingest import ingest_folder
+
+    folder = catalog.matter_folder(matter_id)
+    if folder is None:
+        raise HTTPException(status_code=404, detail="Matter not found")
+    docs = ingest_folder(folder)
+    return [
+        {"filename": d.filename, "chars": len(d.text.strip()), "text": d.text[:20000]}
+        for d in docs
+    ]
+
+
+@app.get("/api/templates/{template_id}/text")
+def get_template_text(template_id: str):
+    """The normalized template text (with detected {{blanks}}) for preview."""
+    path = catalog.template_path(template_id)
+    if path is None:
+        raise HTTPException(status_code=404, detail="Template not found")
+    _, text = read_template_text(path)
+    return {"text": text}
+
+
 @app.get("/api/models")
 def get_models():
     """Enumerate installed local models (FR-11), degrading gracefully (NFR-3)."""

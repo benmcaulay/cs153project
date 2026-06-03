@@ -28,87 +28,147 @@ import {
   Clock,
   Quote,
   ShieldAlert,
+  Info,
+  X,
+  Eye,
+  ChevronDown,
+  ChevronRight,
+  RefreshCw,
 } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
-import {
-  api,
-  CaseInfo,
-  TemplateInfo,
-  OllamaModel,
-  FillResult,
-} from "@/api/client";
+import { api, TemplateInfo, FillResult, DocText } from "@/api/client";
 import FilledDocument from "@/components/FilledDocument";
+import { useFill } from "@/components/FillContext";
 
-const AttorneyWorkspace = () => {
-  const { toast } = useToast();
-  const [matters, setMatters] = useState<CaseInfo[]>([]);
-  const [templates, setTemplates] = useState<TemplateInfo[]>([]);
-  const [models, setModels] = useState<OllamaModel[]>([]);
-  const [modelsAvailable, setModelsAvailable] = useState(true);
+const SourceInspector = ({
+  matterId,
+  templateId,
+}: {
+  matterId: string;
+  templateId: string;
+}) => {
+  const [open, setOpen] = useState(false);
+  const [docs, setDocs] = useState<DocText[] | null>(null);
+  const [tmpl, setTmpl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded] = useState<string | null>(null);
 
-  const [matterId, setMatterId] = useState("");
-  const [templateId, setTemplateId] = useState("");
-  const [model, setModel] = useState("");
-
-  const [filling, setFilling] = useState(false);
-  const [result, setResult] = useState<FillResult | null>(null);
-
-  useEffect(() => {
-    api.matters().then(setMatters).catch(() => setMatters([]));
-    api.templates().then(setTemplates).catch(() => setTemplates([]));
-    api
-      .models()
-      .then((r) => {
-        setModels(r.models);
-        setModelsAvailable(r.available);
-        if (r.available && r.models[0]) setModel(r.models[0].name);
-      })
-      .catch(() => setModelsAvailable(false));
-  }, []);
-
-  const template = templates.find((t) => t.id === templateId);
-
-  const handleFill = async () => {
-    if (!matterId || !templateId || !model) {
-      toast({
-        title: "Three selections required",
-        description: "Choose a matter, a template, and a model.",
-        variant: "destructive",
-      });
-      return;
-    }
-    setFilling(true);
-    setResult(null);
+  const load = async () => {
+    setLoading(true);
     try {
-      const r = await api.fill(matterId, templateId, model);
-      setResult(r);
-      if (r.status === "model_timeout") {
-        toast({
-          title: "Model timed out",
-          description: r.message ?? "The model did not respond in time.",
-          variant: "destructive",
-        });
-      } else if (r.status === "model_unreachable") {
-        toast({
-          title: "Model runtime unreachable",
-          description:
-            "Every field is marked for review. Start Ollama on the local host and try again.",
-          variant: "destructive",
-        });
-      } else if (r.status !== "ok") {
-        toast({ title: "Fill incomplete", description: r.message ?? "", variant: "destructive" });
-      } else {
-        toast({
-          title: "Fill complete",
-          description: `${r.blanks_filled} filled · ${r.blanks_needs_review} need review.`,
-        });
-      }
-    } catch (e: any) {
-      toast({ title: "Fill failed", description: String(e.message ?? e), variant: "destructive" });
+      const [d, t] = await Promise.all([
+        matterId ? api.matterText(matterId) : Promise.resolve([] as DocText[]),
+        templateId ? api.templateText(templateId) : Promise.resolve({ text: "" }),
+      ]);
+      setDocs(d);
+      setTmpl(t.text);
+    } catch {
+      setDocs([]);
+      setTmpl("");
     } finally {
-      setFilling(false);
+      setLoading(false);
     }
   };
+
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    if (next && docs === null) load();
+  };
+
+  if (!matterId && !templateId) return null;
+
+  return (
+    <Card className="bg-card border-border">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-card-foreground flex items-center justify-between text-lg">
+          <button onClick={toggle} className="flex items-center gap-2">
+            {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            <Eye className="h-5 w-5 text-muted-foreground" />
+            Inspect sources
+          </button>
+          {open && (
+            <Button variant="outline" size="sm" onClick={load} disabled={loading} className="border-border">
+              <RefreshCw className={"h-4 w-4 " + (loading ? "animate-spin" : "")} />
+            </Button>
+          )}
+        </CardTitle>
+        <CardDescription>
+          See exactly what the model reads (the extracted text of each case
+          document and the template with its detected blanks).
+        </CardDescription>
+      </CardHeader>
+      {open && (
+        <CardContent className="space-y-3">
+          {loading && <p className="text-sm text-muted-foreground">Reading sources…</p>}
+
+          {tmpl != null && (
+            <div className="rounded-lg border border-border">
+              <div className="px-3 py-2 text-sm font-medium text-foreground border-b border-border">
+                Template
+              </div>
+              <pre className="p-3 text-xs whitespace-pre-wrap font-mono max-h-48 overflow-y-auto text-muted-foreground">
+                {tmpl || "(empty)"}
+              </pre>
+            </div>
+          )}
+
+          {docs?.map((d) => (
+            <div key={d.filename} className="rounded-lg border border-border">
+              <button
+                onClick={() => setExpanded(expanded === d.filename ? null : d.filename)}
+                className="w-full flex items-center justify-between px-3 py-2 text-sm"
+              >
+                <span className="flex items-center gap-2 font-medium text-foreground truncate">
+                  <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span className="truncate">{d.filename}</span>
+                </span>
+                <Badge
+                  variant="outline"
+                  className={d.chars === 0 ? "text-amber-700 border-amber-400" : ""}
+                >
+                  {d.chars === 0 ? "no readable text" : `${d.chars.toLocaleString()} chars`}
+                </Badge>
+              </button>
+              {expanded === d.filename && (
+                <pre className="px-3 pb-3 text-xs whitespace-pre-wrap font-mono max-h-64 overflow-y-auto text-muted-foreground border-t border-border pt-2">
+                  {d.text || "(no extractable text — scanned/encrypted, or empty)"}
+                </pre>
+              )}
+            </div>
+          ))}
+          {docs?.length === 0 && !loading && (
+            <p className="text-sm text-muted-foreground">No documents in this matter.</p>
+          )}
+        </CardContent>
+      )}
+    </Card>
+  );
+};
+
+const AttorneyWorkspace = () => {
+  const {
+    matters,
+    templates,
+    models,
+    modelsAvailable,
+    matterId,
+    templateId,
+    model,
+    setMatterId,
+    setTemplateId,
+    setModel,
+    filling,
+    elapsedMs,
+    result,
+    runFill,
+    cancel,
+  } = useFill();
+
+  // Embedding models (e.g. nomic-embed-text) power retrieval but cannot generate
+  // text — keep them out of the generation-model picker.
+  const genModels = models.filter((m) => !m.embedding);
+  const template = templates.find((t) => t.id === templateId);
+  const elapsedLabel = `${(elapsedMs / 1000).toFixed(1)}s`;
 
   return (
     <div className="space-y-6">
@@ -192,13 +252,13 @@ const AttorneyWorkspace = () => {
               <label className="block text-sm font-medium text-muted-foreground mb-2">
                 Local model
               </label>
-              {modelsAvailable && models.length > 0 ? (
+              {modelsAvailable && genModels.length > 0 ? (
                 <Select value={model} onValueChange={setModel}>
                   <SelectTrigger className="border-border">
                     <SelectValue placeholder="Choose a model" />
                   </SelectTrigger>
                   <SelectContent>
-                    {models.map((m) => (
+                    {genModels.map((m) => (
                       <SelectItem key={m.name} value={m.name}>
                         <div className="flex items-center gap-2">
                           <Cpu className="h-4 w-4 text-muted-foreground" />
@@ -239,25 +299,41 @@ const AttorneyWorkspace = () => {
             </div>
           )}
 
-          <Button
-            onClick={handleFill}
-            disabled={filling || !matterId || !templateId || !model}
-            className="w-full bg-primary hover:bg-primary/90"
-          >
-            {filling ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Filling…
-              </>
-            ) : (
-              <>
-                <Wand2 className="mr-2 h-4 w-4" />
-                Fill
-              </>
+          <div className="flex gap-2">
+            <Button
+              onClick={runFill}
+              disabled={filling || !matterId || !templateId || !model}
+              className="flex-1 bg-primary hover:bg-primary/90"
+            >
+              {filling ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Filling… <span className="ml-1 font-mono tabular-nums">{elapsedLabel}</span>
+                </>
+              ) : (
+                <>
+                  <Wand2 className="mr-2 h-4 w-4" />
+                  Fill
+                </>
+              )}
+            </Button>
+            {filling && (
+              <Button variant="outline" onClick={cancel} className="border-border">
+                <X className="mr-1 h-4 w-4" />
+                Cancel
+              </Button>
             )}
-          </Button>
+          </div>
+          {filling && (
+            <p className="text-xs text-muted-foreground">
+              Running locally — this keeps going if you switch tabs. Larger models
+              and first-time loads can take a few minutes.
+            </p>
+          )}
         </CardContent>
       </Card>
+
+      <SourceInspector matterId={matterId} templateId={templateId} />
 
       {result && <ResultView result={result} />}
     </div>
@@ -295,7 +371,17 @@ const Metric = ({
   </div>
 );
 
+const REVIEW_REASONS: Record<string, string> = {
+  no_context: "No matching passage was retrieved from the case file.",
+  model_blanked: "The model found nothing it could ground in the sources.",
+  ungrounded: "The model proposed a value, but its quote wasn't found in the sources.",
+  missing_key: "The model omitted this field from its response.",
+  model_unreachable: "The model runtime was unavailable.",
+  no_documents: "No readable case text was available.",
+};
+
 const ResultView = ({ result }: { result: FillResult }) => {
+  const incomplete = result.status === "ok" && result.blanks_filled < result.blanks_total;
   return (
     <>
       {/* Why everything is for review, when inference didn't complete */}
@@ -311,6 +397,19 @@ const ResultView = ({ result }: { result: FillResult }) => {
                 : "Inference did not complete."}
             </span>
             {result.message && <div className="mt-0.5">{result.message}</div>}
+          </div>
+        </div>
+      )}
+
+      {/* The fill completed but blanks remain — explain why, so 0/N isn't a mystery */}
+      {incomplete && result.message && (
+        <div className="flex items-start gap-2 rounded-md border border-sky-300 bg-sky-50 p-3 text-sm text-sky-900">
+          <Info className="h-4 w-4 mt-0.5 shrink-0" />
+          <div>
+            <span className="font-semibold">
+              {result.blanks_filled} of {result.blanks_total} blanks filled.
+            </span>{" "}
+            {result.message}
           </div>
         </div>
       )}
@@ -431,6 +530,12 @@ const ResultView = ({ result }: { result: FillResult }) => {
                   <span>
                     “{f.source_quote}” — <span className="font-mono">{f.source_document}</span>
                   </span>
+                </div>
+              )}
+              {!f.found && f.review_reason && REVIEW_REASONS[f.review_reason] && (
+                <div className="text-xs text-amber-700/90 flex items-start gap-1">
+                  <Info className="h-3 w-3 mt-0.5 shrink-0" />
+                  <span>{REVIEW_REASONS[f.review_reason]}</span>
                 </div>
               )}
             </div>
