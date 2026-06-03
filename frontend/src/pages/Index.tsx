@@ -17,7 +17,7 @@ const SURFACE_TITLE: Record<Surface, string> = {
 
 const SURFACE_BLURB: Record<Surface, string> = {
   attorney:
-    "Transcribe facts from a matter's case file into a firm template — grounded, provenance-backed, and private.",
+    "Transcribe facts from a matter's case file into a private, provenance-backed template.",
   library:
     "Upload case documents into a matter and add firm templates. Nothing leaves this host.",
   developer:

@@ -93,8 +93,8 @@ const SourceInspector = ({
           )}
         </CardTitle>
         <CardDescription>
-          See exactly what the model reads — the extracted text of each case
-          document and the template with its detected blanks.
+          See exactly what the model reads (the extracted text of each case
+          document and the template with its detected blanks).
         </CardDescription>
       </CardHeader>
       {open && (
