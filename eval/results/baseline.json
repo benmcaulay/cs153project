@@ -1,0 +1,290 @@
+{
+  "engine": "baseline",
+  "summary": {
+    "fields_total": 32,
+    "recall_on_answerable": 0.692,
+    "abstention_correctness": 0.667,
+    "fabrications": 2,
+    "fabrication_rate": 0.062,
+    "wrong_values": 0,
+    "avg_latency_seconds": 0.0,
+    "category_counts": {
+      "correct": 18,
+      "correct_abstention": 4,
+      "fabrication": 2,
+      "wrong_value": 0,
+      "miss": 8
+    }
+  },
+  "pairs": [
+    {
+      "matter": "Estate of Williams",
+      "template": "probate_petition.txt",
+      "status": "ok",
+      "inference_seconds": 0.0,
+      "counts": {
+        "correct": 7,
+        "correct_abstention": 0,
+        "fabrication": 0,
+        "wrong_value": 0,
+        "miss": 2
+      },
+      "details": [
+        {
+          "key": "court",
+          "gold": "Probate Court of Marion County, Ohio",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "miss",
+          "source_document": null
+        },
+        {
+          "key": "decedent_name",
+          "gold": "Harold E. Williams",
+          "produced": "Harold E. Williams",
+          "outcome": "correct",
+          "source_document": "intake.txt"
+        },
+        {
+          "key": "executor_name",
+          "gold": "Eleanor Williams-Park",
+          "produced": "Eleanor Williams-Park",
+          "outcome": "correct",
+          "source_document": "intake.txt"
+        },
+        {
+          "key": "date_of_death",
+          "gold": "January 28, 2024",
+          "produced": "January 28, 2024",
+          "outcome": "correct",
+          "source_document": "intake.txt"
+        },
+        {
+          "key": "place_of_death",
+          "gold": "Fairhaven, Ohio",
+          "produced": "Fairhaven, Ohio",
+          "outcome": "correct",
+          "source_document": "intake.txt"
+        },
+        {
+          "key": "decedent_residence",
+          "gold": "77 Chestnut Court, Fairhaven, OH 45011",
+          "produced": "77 Chestnut Court, Fairhaven, OH 45011",
+          "outcome": "correct",
+          "source_document": "intake.txt"
+        },
+        {
+          "key": "will_date",
+          "gold": "June 4, 2019",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "miss",
+          "source_document": null
+        },
+        {
+          "key": "estate_value",
+          "gold": "$1,250,000",
+          "produced": "$1,250,000",
+          "outcome": "correct",
+          "source_document": "intake.txt"
+        },
+        {
+          "key": "executor_address",
+          "gold": "1290 Birchwood Lane, Fairhaven, OH 45011",
+          "produced": "1290 Birchwood Lane, Fairhaven, OH 45011",
+          "outcome": "correct",
+          "source_document": "intake.txt"
+        }
+      ]
+    },
+    {
+      "matter": "Smith v Johnson",
+      "template": "demand_letter.md",
+      "status": "ok",
+      "inference_seconds": 0.0,
+      "counts": {
+        "correct": 7,
+        "correct_abstention": 2,
+        "fabrication": 1,
+        "wrong_value": 0,
+        "miss": 4
+      },
+      "details": [
+        {
+          "key": "client_name",
+          "gold": "Margaret A. Smith",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "miss",
+          "source_document": null
+        },
+        {
+          "key": "adverse_party",
+          "gold": "Robert T. Johnson",
+          "produced": "Robert T. Johnson",
+          "outcome": "correct",
+          "source_document": "intake_memo.txt"
+        },
+        {
+          "key": "matter_caption",
+          "gold": "Margaret A. Smith v. Robert T. Johnson",
+          "produced": "Margaret A. Smith v. Robert T. Johnson",
+          "outcome": "correct",
+          "source_document": "complaint_draft.md"
+        },
+        {
+          "key": "incident_date",
+          "gold": "January 14, 2024",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "miss",
+          "source_document": null
+        },
+        {
+          "key": "incident_location",
+          "gold": "intersection of 5th Street and Marquette Boulevard, Riverton, Illinois",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "miss",
+          "source_document": null
+        },
+        {
+          "key": "injury_description",
+          "gold": "closed fracture of the left tibia; mild concussion; multiple contusions to the left hip and shoulder",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "miss",
+          "source_document": null
+        },
+        {
+          "key": "treating_facility",
+          "gold": "Riverton General Hospital",
+          "produced": "Riverton General Hospital",
+          "outcome": "correct",
+          "source_document": "medical_summary.txt"
+        },
+        {
+          "key": "medical_expenses",
+          "gold": "$42,350.00",
+          "produced": "$42,350.00",
+          "outcome": "correct",
+          "source_document": "medical_summary.txt"
+        },
+        {
+          "key": "future_costs",
+          "gold": "$6,200.00",
+          "produced": "$6,200.00",
+          "outcome": "correct",
+          "source_document": "medical_summary.txt"
+        },
+        {
+          "key": "case_number",
+          "gold": "2024-L-00231",
+          "produced": "2024-L-00231",
+          "outcome": "correct",
+          "source_document": "complaint_draft.md"
+        },
+        {
+          "key": "court",
+          "gold": "Circuit Court of Hale County, Illinois",
+          "produced": "Circuit Court of Hale County, Illinois",
+          "outcome": "correct",
+          "source_document": "complaint_draft.md"
+        },
+        {
+          "key": "date",
+          "gold": "NEEDS_REVIEW",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "correct_abstention",
+          "source_document": null
+        },
+        {
+          "key": "demand_amount",
+          "gold": "NEEDS_REVIEW",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "correct_abstention",
+          "source_document": null
+        },
+        {
+          "key": "responsible_attorney",
+          "gold": "NEEDS_REVIEW",
+          "produced": "Dana Reyes",
+          "outcome": "fabrication",
+          "source_document": "intake_memo.txt"
+        }
+      ]
+    },
+    {
+      "matter": "Smith v Johnson",
+      "template": "engagement_letter.md",
+      "status": "ok",
+      "inference_seconds": 0.0,
+      "counts": {
+        "correct": 4,
+        "correct_abstention": 2,
+        "fabrication": 1,
+        "wrong_value": 0,
+        "miss": 2
+      },
+      "details": [
+        {
+          "key": "client_name",
+          "gold": "Margaret A. Smith",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "miss",
+          "source_document": null
+        },
+        {
+          "key": "client_address",
+          "gold": "418 Linden Avenue, Apt. 6, Riverton, IL 60412",
+          "produced": "418 Linden Avenue, Apt. 6, Riverton, IL 60412",
+          "outcome": "correct",
+          "source_document": "intake_memo.txt"
+        },
+        {
+          "key": "matter_caption",
+          "gold": "Margaret A. Smith v. Robert T. Johnson",
+          "produced": "Margaret A. Smith v. Robert T. Johnson",
+          "outcome": "correct",
+          "source_document": "complaint_draft.md"
+        },
+        {
+          "key": "client_role",
+          "gold": "plaintiff",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "miss",
+          "source_document": null
+        },
+        {
+          "key": "court",
+          "gold": "Circuit Court of Hale County, Illinois",
+          "produced": "Circuit Court of Hale County, Illinois",
+          "outcome": "correct",
+          "source_document": "complaint_draft.md"
+        },
+        {
+          "key": "adverse_party",
+          "gold": "Robert T. Johnson",
+          "produced": "Robert T. Johnson",
+          "outcome": "correct",
+          "source_document": "intake_memo.txt"
+        },
+        {
+          "key": "date",
+          "gold": "NEEDS_REVIEW",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "correct_abstention",
+          "source_document": null
+        },
+        {
+          "key": "hourly_rate",
+          "gold": "NEEDS_REVIEW",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "correct_abstention",
+          "source_document": null
+        },
+        {
+          "key": "responsible_attorney",
+          "gold": "NEEDS_REVIEW",
+          "produced": "Dana Reyes",
+          "outcome": "fabrication",
+          "source_document": "intake_memo.txt"
+        }
+      ]
+    }
+  ]
+}

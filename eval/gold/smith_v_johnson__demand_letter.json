@@ -1,0 +1,21 @@
+{
+  "matter": "Smith v Johnson",
+  "template_filename": "demand_letter.md",
+  "note": "Gold answers grounded in the Smith v. Johnson case file. Fields whose value is NOT stated in the case file (the letter date, the attorney-chosen demand amount, the responsible attorney) are expected to be NEEDS_REVIEW: filling them would be a fabrication.",
+  "expected": {
+    "client_name": "Margaret A. Smith",
+    "adverse_party": "Robert T. Johnson",
+    "matter_caption": "Margaret A. Smith v. Robert T. Johnson",
+    "incident_date": "January 14, 2024",
+    "incident_location": "intersection of 5th Street and Marquette Boulevard, Riverton, Illinois",
+    "injury_description": "closed fracture of the left tibia; mild concussion; multiple contusions to the left hip and shoulder",
+    "treating_facility": "Riverton General Hospital",
+    "medical_expenses": "$42,350.00",
+    "future_costs": "$6,200.00",
+    "case_number": "2024-L-00231",
+    "court": "Circuit Court of Hale County, Illinois",
+    "date": "NEEDS_REVIEW",
+    "demand_amount": "NEEDS_REVIEW",
+    "responsible_attorney": "NEEDS_REVIEW"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "matter": "Smith v Johnson",
+  "template_filename": "engagement_letter.md",
+  "note": "The hourly rate and letter date are not in the case file, and the engagement's responsible attorney is not stated (only the intake attorney is). All three are expected NEEDS_REVIEW.",
+  "expected": {
+    "client_name": "Margaret A. Smith",
+    "client_address": "418 Linden Avenue, Apt. 6, Riverton, IL 60412",
+    "matter_caption": "Margaret A. Smith v. Robert T. Johnson",
+    "client_role": "plaintiff",
+    "court": "Circuit Court of Hale County, Illinois",
+    "adverse_party": "Robert T. Johnson",
+    "date": "NEEDS_REVIEW",
+    "hourly_rate": "NEEDS_REVIEW",
+    "responsible_attorney": "NEEDS_REVIEW"
+  }
+}

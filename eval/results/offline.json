@@ -1,0 +1,290 @@
+{
+  "engine": "offline",
+  "summary": {
+    "fields_total": 32,
+    "recall_on_answerable": 0.0,
+    "abstention_correctness": 1.0,
+    "fabrications": 0,
+    "fabrication_rate": 0.0,
+    "wrong_values": 0,
+    "avg_latency_seconds": 0.0,
+    "category_counts": {
+      "correct": 0,
+      "correct_abstention": 6,
+      "fabrication": 0,
+      "wrong_value": 0,
+      "miss": 26
+    }
+  },
+  "pairs": [
+    {
+      "matter": "Estate of Williams",
+      "template": "probate_petition.txt",
+      "status": "model_unreachable",
+      "inference_seconds": 0.0,
+      "counts": {
+        "correct": 0,
+        "correct_abstention": 0,
+        "fabrication": 0,
+        "wrong_value": 0,
+        "miss": 9
+      },
+      "details": [
+        {
+          "key": "court",
+          "gold": "Probate Court of Marion County, Ohio",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "miss",
+          "source_document": null
+        },
+        {
+          "key": "decedent_name",
+          "gold": "Harold E. Williams",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "miss",
+          "source_document": null
+        },
+        {
+          "key": "executor_name",
+          "gold": "Eleanor Williams-Park",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "miss",
+          "source_document": null
+        },
+        {
+          "key": "date_of_death",
+          "gold": "January 28, 2024",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "miss",
+          "source_document": null
+        },
+        {
+          "key": "place_of_death",
+          "gold": "Fairhaven, Ohio",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "miss",
+          "source_document": null
+        },
+        {
+          "key": "decedent_residence",
+          "gold": "77 Chestnut Court, Fairhaven, OH 45011",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "miss",
+          "source_document": null
+        },
+        {
+          "key": "will_date",
+          "gold": "June 4, 2019",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "miss",
+          "source_document": null
+        },
+        {
+          "key": "estate_value",
+          "gold": "$1,250,000",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "miss",
+          "source_document": null
+        },
+        {
+          "key": "executor_address",
+          "gold": "1290 Birchwood Lane, Fairhaven, OH 45011",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "miss",
+          "source_document": null
+        }
+      ]
+    },
+    {
+      "matter": "Smith v Johnson",
+      "template": "demand_letter.md",
+      "status": "model_unreachable",
+      "inference_seconds": 0.0,
+      "counts": {
+        "correct": 0,
+        "correct_abstention": 3,
+        "fabrication": 0,
+        "wrong_value": 0,
+        "miss": 11
+      },
+      "details": [
+        {
+          "key": "client_name",
+          "gold": "Margaret A. Smith",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "miss",
+          "source_document": null
+        },
+        {
+          "key": "adverse_party",
+          "gold": "Robert T. Johnson",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "miss",
+          "source_document": null
+        },
+        {
+          "key": "matter_caption",
+          "gold": "Margaret A. Smith v. Robert T. Johnson",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "miss",
+          "source_document": null
+        },
+        {
+          "key": "incident_date",
+          "gold": "January 14, 2024",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "miss",
+          "source_document": null
+        },
+        {
+          "key": "incident_location",
+          "gold": "intersection of 5th Street and Marquette Boulevard, Riverton, Illinois",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "miss",
+          "source_document": null
+        },
+        {
+          "key": "injury_description",
+          "gold": "closed fracture of the left tibia; mild concussion; multiple contusions to the left hip and shoulder",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "miss",
+          "source_document": null
+        },
+        {
+          "key": "treating_facility",
+          "gold": "Riverton General Hospital",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "miss",
+          "source_document": null
+        },
+        {
+          "key": "medical_expenses",
+          "gold": "$42,350.00",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "miss",
+          "source_document": null
+        },
+        {
+          "key": "future_costs",
+          "gold": "$6,200.00",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "miss",
+          "source_document": null
+        },
+        {
+          "key": "case_number",
+          "gold": "2024-L-00231",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "miss",
+          "source_document": null
+        },
+        {
+          "key": "court",
+          "gold": "Circuit Court of Hale County, Illinois",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "miss",
+          "source_document": null
+        },
+        {
+          "key": "date",
+          "gold": "NEEDS_REVIEW",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "correct_abstention",
+          "source_document": null
+        },
+        {
+          "key": "demand_amount",
+          "gold": "NEEDS_REVIEW",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "correct_abstention",
+          "source_document": null
+        },
+        {
+          "key": "responsible_attorney",
+          "gold": "NEEDS_REVIEW",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "correct_abstention",
+          "source_document": null
+        }
+      ]
+    },
+    {
+      "matter": "Smith v Johnson",
+      "template": "engagement_letter.md",
+      "status": "model_unreachable",
+      "inference_seconds": 0.0,
+      "counts": {
+        "correct": 0,
+        "correct_abstention": 3,
+        "fabrication": 0,
+        "wrong_value": 0,
+        "miss": 6
+      },
+      "details": [
+        {
+          "key": "client_name",
+          "gold": "Margaret A. Smith",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "miss",
+          "source_document": null
+        },
+        {
+          "key": "client_address",
+          "gold": "418 Linden Avenue, Apt. 6, Riverton, IL 60412",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "miss",
+          "source_document": null
+        },
+        {
+          "key": "matter_caption",
+          "gold": "Margaret A. Smith v. Robert T. Johnson",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "miss",
+          "source_document": null
+        },
+        {
+          "key": "client_role",
+          "gold": "plaintiff",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "miss",
+          "source_document": null
+        },
+        {
+          "key": "court",
+          "gold": "Circuit Court of Hale County, Illinois",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "miss",
+          "source_document": null
+        },
+        {
+          "key": "adverse_party",
+          "gold": "Robert T. Johnson",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "miss",
+          "source_document": null
+        },
+        {
+          "key": "date",
+          "gold": "NEEDS_REVIEW",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "correct_abstention",
+          "source_document": null
+        },
+        {
+          "key": "hourly_rate",
+          "gold": "NEEDS_REVIEW",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "correct_abstention",
+          "source_document": null
+        },
+        {
+          "key": "responsible_attorney",
+          "gold": "NEEDS_REVIEW",
+          "produced": "NEEDS_REVIEW",
+          "outcome": "correct_abstention",
+          "source_document": null
+        }
+      ]
+    }
+  ]
+}
