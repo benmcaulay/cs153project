@@ -9,6 +9,7 @@ in the case file is returned as NEEDS_REVIEW; the system never fabricates.
 from __future__ import annotations
 
 import re
+import sys
 import uuid
 from collections import Counter
 from typing import Callable, Dict, List, Optional, Tuple
@@ -265,7 +266,7 @@ def fill(
         kind = getattr(exc, "kind", "error")
         run.status = "model_timeout" if kind == "timeout" else "model_unreachable"
         run.message = str(exc)
-        print(f"[fill] inference failed (kind={kind}) model={model}: {exc}")
+        print(f"[fill] inference failed (kind={kind}) model={model}: {exc}", file=sys.stderr)
         run.fields = [
             FilledField(key=f.key, label=f.label, value=NEEDS_REVIEW, found=False,
                         review_reason="model_unreachable")

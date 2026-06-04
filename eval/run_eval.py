@@ -157,8 +157,8 @@ def aggregate(pairs: list[dict]) -> dict:
 
 
 def print_report(engine: str, pairs: list[dict], summary: dict) -> None:
-    print(f"\n# Verbatim evaluation — engine: {engine}\n")
-    print("| matter | template | status | correct | abstain✓ | FABRICATION | wrong | miss |")
+    print(f"\n# Verbatim evaluation - engine: {engine}\n")
+    print("| matter | template | status | correct | abstain_ok | FABRICATION | wrong | miss |")
     print("|---|---|---|--:|--:|--:|--:|--:|")
     for p in pairs:
         c = p["counts"]
@@ -178,6 +178,11 @@ def print_report(engine: str, pairs: list[dict], summary: dict) -> None:
 
 
 def main() -> None:
+    # Windows consoles default to cp1252 and choke on non-ASCII; be safe.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
     ap = argparse.ArgumentParser(description="Run the Verbatim evaluation harness.")
     ap.add_argument("--engine", default="baseline", help="baseline | offline | ollama:<model>")
     ap.add_argument("--no-write", action="store_true", help="do not write a results file")
