@@ -24,7 +24,7 @@ leaves the machine.
 - **Detects real firm blanks, not just `{{markup}}`.** Lawyers mark blanks with
   underscores, `[ ]` checkboxes, `Label :` pairs, and ALL-CAPS sentinels
   (`NAME`, `XXX`) — never mustache syntax. A Tier-2 deterministic detector
-  (`app/blank_detection.py`) normalizes those conventions to canonical markup at
+  (`app/blank_detect.py`) normalizes those conventions to canonical markup at
   import, so a real firm template that used to detect **zero** blanks now detects
   them (the shipped `affidavit_of_heirs.txt` goes from 0 → 19). Design and
   taxonomy: `docs/blank-detection.md`.

@@ -56,7 +56,7 @@ unassisted.
   the demo PC; the demo uses 7B–14B): `SPEC.md` §8.
 - The blank-detection gap on real firm templates and the Tier-2 detector that
   closes the deterministic part of it: `docs/blank-detection.md`, `SPEC.md`
-  §6.2, `app/blank_detection.py`.
+  §6.2, `app/blank_detect.py`.
 - What the evaluation does and does **not** establish (no live 7B–70B run is
   included; the baseline is intentionally naive): `eval/README.md`.
 - Production gaps intentionally out of scope for the prototype (auth/RBAC,
