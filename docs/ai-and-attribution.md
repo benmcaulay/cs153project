@@ -1,6 +1,6 @@
 # AI Usage, Sources & Attribution
 
-This project was built for CS 153. In the spirit of the course's integrity and
+Verbatim originated as a Stanford CS 153 project. In the spirit of integrity and
 disclosure expectations, this document states plainly what was AI-assisted, what
 base code was borrowed, and where the substantial original work is. Please read
 it alongside the commit history, which shows the work progressing over time.

@@ -26,14 +26,58 @@ from .models import CaseInfo, FillResult, ModelStyleStats, TemplateInfo
 from .store import flag_field, list_runs, load_run, set_template_style
 from .templates import prepare_template, read_template_text
 
+from .security import api_token, check_bearer, encryption_enabled
+
 app = FastAPI(title="Verbatim", description="Privacy-preserving local legal template assistant")
 
+# CORS: locked to local origins by default (the Vite dev server and the
+# single-origin deployment). Additional origins — e.g. an internal hostname on
+# a firm network — are opt-in via VERBATIM_ALLOWED_ORIGINS (comma-separated).
+_DEFAULT_ORIGINS = [
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+]
+_extra_origins = [
+    o.strip() for o in os.environ.get("VERBATIM_ALLOWED_ORIGINS", "").split(",") if o.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # prototype runs on a trusted local host only (§15)
+    allow_origins=_DEFAULT_ORIGINS + _extra_origins,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["*", "Authorization"],
 )
+
+
+@app.middleware("http")
+async def _auth_and_headers(request, call_next):
+    """Bearer-token auth (NFR-5) + conservative security headers.
+
+    Auth applies to /api/* when VERBATIM_API_TOKEN is set; /api/health stays
+    open so monitoring and the UI's status badge work pre-authentication.
+    CORS preflights (OPTIONS) pass through so the browser can negotiate.
+    """
+    path = request.url.path
+    if (
+        api_token() is not None
+        and path.startswith("/api/")
+        and path != "/api/health"
+        and request.method != "OPTIONS"
+        and not check_bearer(request.headers.get("authorization"))
+    ):
+        from fastapi.responses import JSONResponse
+
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Missing or invalid bearer token"},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    return response
 
 
 # --------------------------------------------------------------------------- #
@@ -46,6 +90,8 @@ def health():
         "ok": True,
         "ollama_available": available,
         "ollama_host": ollama_client.OLLAMA_HOST,
+        "auth_required": api_token() is not None,
+        "encryption_at_rest": encryption_enabled(),
     }
 
 
@@ -198,6 +244,12 @@ def post_style(template_id: str, req: StyleRequest):
 @app.get("/api/report", response_model=List[ModelStyleStats])
 def get_report():
     return reporting.model_style_report()
+
+
+@app.get("/api/report/pilot")
+def get_pilot_report():
+    """Deployment-wide aggregate of every run on this host (see reporting.pilot_report)."""
+    return reporting.pilot_report()
 
 
 # --------------------------------------------------------------------------- #

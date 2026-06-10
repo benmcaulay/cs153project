@@ -95,6 +95,27 @@ export interface ModelStyleStats {
 
 const BASE = "/api";
 
+// ---- Optional bearer-token auth (matches VERBATIM_API_TOKEN on the backend) ----
+const TOKEN_KEY = "verbatim_api_token";
+
+export function setApiToken(token: string | null): void {
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+  else localStorage.removeItem(TOKEN_KEY);
+}
+
+export function getApiToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+/** fetch() with the Authorization header attached when a token is stored. */
+function request(input: string, init: RequestInit = {}): Promise<Response> {
+  const token = getApiToken();
+  if (token) {
+    init.headers = { ...(init.headers as Record<string, string>), Authorization: `Bearer ${token}` };
+  }
+  return fetch(input, init);
+}
+
 async function j<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -105,58 +126,68 @@ async function j<T>(res: Response): Promise<T> {
 
 export const api = {
   health: () =>
-    fetch(`${BASE}/health`).then(
+    request(`${BASE}/health`).then(
       j<{ ok: boolean; ollama_available: boolean; ollama_host: string }>
     ),
 
-  matters: () => fetch(`${BASE}/matters`).then(j<CaseInfo[]>),
+  matters: () => request(`${BASE}/matters`).then(j<CaseInfo[]>),
 
-  templates: () => fetch(`${BASE}/templates`).then(j<TemplateInfo[]>),
+  templates: () => request(`${BASE}/templates`).then(j<TemplateInfo[]>),
 
   matterText: (id: string) =>
-    fetch(`${BASE}/matters/${id}/text`).then(j<DocText[]>),
+    request(`${BASE}/matters/${id}/text`).then(j<DocText[]>),
 
   templateText: (id: string) =>
-    fetch(`${BASE}/templates/${id}/text`).then(j<{ text: string }>),
+    request(`${BASE}/templates/${id}/text`).then(j<{ text: string }>),
 
   models: () =>
-    fetch(`${BASE}/models`).then(
+    request(`${BASE}/models`).then(
       j<{ available: boolean; models: OllamaModel[]; message?: string }>
     ),
 
   fill: (matter_id: string, template_id: string, model: string, signal?: AbortSignal) =>
-    fetch(`${BASE}/fill`, {
+    request(`${BASE}/fill`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ matter_id, template_id, model }),
       signal,
     }).then(j<FillResult>),
 
-  runs: () => fetch(`${BASE}/runs`).then(j<FillResult[]>),
+  runs: () => request(`${BASE}/runs`).then(j<FillResult[]>),
 
-  run: (run_id: string) => fetch(`${BASE}/runs/${run_id}`).then(j<FillResult>),
+  run: (run_id: string) => request(`${BASE}/runs/${run_id}`).then(j<FillResult>),
 
   flag: (run_id: string, field_key: string, flag: "correct" | "incorrect" | null) =>
-    fetch(`${BASE}/runs/${run_id}/flag`, {
+    request(`${BASE}/runs/${run_id}/flag`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ field_key, flag }),
     }).then(j<FillResult>),
 
   setStyle: (template_id: string, style: string) =>
-    fetch(`${BASE}/templates/${template_id}/style`, {
+    request(`${BASE}/templates/${template_id}/style`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ style }),
     }).then(j<TemplateInfo>),
 
-  report: () => fetch(`${BASE}/report`).then(j<ModelStyleStats[]>),
+  report: () => request(`${BASE}/report`).then(j<ModelStyleStats[]>),
 
   exportUrl: (run_id: string) => `${BASE}/export/${run_id}`,
 
+  /** POST the export endpoint (carrying auth) and hand back the .docx blob. */
+  exportDocx: async (run_id: string): Promise<Blob> => {
+    const res = await request(`${BASE}/export/${run_id}`, { method: "POST" });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`${res.status} ${res.statusText} ${text}`);
+    }
+    return res.blob();
+  },
+
   // ---- Library: uploads & management ----
   createMatter: (name: string) =>
-    fetch(`${BASE}/matters`, {
+    request(`${BASE}/matters`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name }),
@@ -165,32 +196,32 @@ export const api = {
   uploadDocuments: (matter_id: string, files: FileList | File[]) => {
     const fd = new FormData();
     Array.from(files).forEach((f) => fd.append("files", f));
-    return fetch(`${BASE}/matters/${matter_id}/documents`, {
+    return request(`${BASE}/matters/${matter_id}/documents`, {
       method: "POST",
       body: fd,
     }).then(j<CaseInfo>);
   },
 
   deleteDocument: (matter_id: string, filename: string) =>
-    fetch(`${BASE}/matters/${matter_id}/documents/${encodeURIComponent(filename)}`, {
+    request(`${BASE}/matters/${matter_id}/documents/${encodeURIComponent(filename)}`, {
       method: "DELETE",
     }).then(j<CaseInfo>),
 
   deleteMatter: (matter_id: string) =>
-    fetch(`${BASE}/matters/${matter_id}`, { method: "DELETE" }).then(
+    request(`${BASE}/matters/${matter_id}`, { method: "DELETE" }).then(
       j<{ ok: boolean }>
     ),
 
   uploadTemplate: (file: File) => {
     const fd = new FormData();
     fd.append("file", file);
-    return fetch(`${BASE}/templates`, { method: "POST", body: fd }).then(
+    return request(`${BASE}/templates`, { method: "POST", body: fd }).then(
       j<TemplateInfo>
     );
   },
 
   deleteTemplate: (template_id: string) =>
-    fetch(`${BASE}/templates/${template_id}`, { method: "DELETE" }).then(
+    request(`${BASE}/templates/${template_id}`, { method: "DELETE" }).then(
       j<{ ok: boolean }>
     ),
 };

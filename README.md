@@ -1,6 +1,6 @@
 # Verbatim
 
-**A privacy-preserving, self-hosted legal template assistant.** (CS 153)
+**A privacy-preserving, self-hosted legal drafting assistant for law firms.**
 
 Verbatim transcribes facts from a legal matter's case file into the blank fields
 of a firm-authored template. **All computation — parsing, retrieval, and
@@ -192,7 +192,7 @@ that limitation is stated plainly.
 
 ```bash
 pip install -r requirements.txt pytest
-pytest -q          # 21 tests
+pytest -q          # 50 tests
 ```
 
 Coverage includes the anti-hallucination contract (ungrounded values are
@@ -217,6 +217,11 @@ demo-video script is in `docs/demo-script.md`.
   to the local Ollama host. There is no telemetry.
 - Output is explicitly a **draft requiring attorney review**. Verbatim does not
   provide legal advice or exercise legal judgment.
-- The prototype intentionally omits authentication/RBAC and encryption-at-rest;
-  these are required for production and must not be exposed beyond a trusted
-  local host as-is (see `SPEC.md` §13).
+- **API authentication** (optional): set `VERBATIM_API_TOKEN` and every request
+  must carry `Authorization: Bearer <token>`. Unset, the API is open on
+  127.0.0.1 for single-user use.
+- **Encryption at rest** (optional): set `VERBATIM_DATA_KEY` (generate with
+  `python -m app.security --generate-key`) and run records + config are written
+  encrypted (Fernet/AES). Pre-existing plaintext records remain readable.
+- Multi-user RBAC, audit logging, and SSO are on the roadmap and required
+  before deployment beyond a single trusted host (see `SECURITY.md`).
