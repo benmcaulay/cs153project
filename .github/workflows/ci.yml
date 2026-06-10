@@ -32,3 +32,4 @@ jobs:
         run: |
           python -m eval.run_eval --engine offline --no-write
           python -m eval.run_eval --engine baseline --no-write
+          python -m eval.retrieval_recall

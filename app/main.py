@@ -246,6 +246,12 @@ def get_report():
     return reporting.model_style_report()
 
 
+@app.get("/api/report/pilot")
+def get_pilot_report():
+    """Deployment-wide aggregate of every run on this host (see reporting.pilot_report)."""
+    return reporting.pilot_report()
+
+
 # --------------------------------------------------------------------------- #
 # Library: upload case documents and firm templates (FR-1, FR-4)
 # --------------------------------------------------------------------------- #
