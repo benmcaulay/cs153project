@@ -422,12 +422,26 @@ const ResultView = ({ result }: { result: FillResult }) => {
               <CheckCircle2 className="mr-2 h-5 w-5 text-muted-foreground" />
               Fill summary
             </span>
-            <a href={api.exportUrl(result.run_id)} download>
-              <Button size="sm" className="bg-primary hover:bg-primary/90">
-                <Download className="mr-2 h-4 w-4" />
-                Export .docx
-              </Button>
-            </a>
+            <Button
+              size="sm"
+              className="bg-primary hover:bg-primary/90"
+              onClick={async () => {
+                try {
+                  const blob = await api.exportDocx(result.run_id);
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `${result.template_name.replace(/ /g, "_")}_filled.docx`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                } catch (e) {
+                  console.error("Export failed", e);
+                }
+              }}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Export .docx
+            </Button>
           </CardTitle>
         </CardHeader>
         <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3">

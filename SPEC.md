@@ -1,7 +1,7 @@
 # Verbatim — Software Requirements & Design Specification
 
 **Project:** Verbatim — A Privacy-Preserving, Self-Hosted Legal Template Assistant
-**Course:** CS 153
+**Origin:** Stanford CS 153 (initial prototype); now developed independently.
 **Document status:** Draft v0.2 (living document — `main` now integrates the
 Verbatim app and the blank-detection design notes in `docs/blank-detection.md`)
 **Classification:** Internal / academic prototype

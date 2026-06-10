@@ -12,6 +12,7 @@ import os
 from typing import Dict, List, Optional
 
 from .models import FillResult
+from .security import decrypt_bytes, encrypt_bytes
 
 DATA_DIR = os.environ.get(
     "VERBATIM_DATA_DIR",
@@ -21,6 +22,20 @@ MATTERS_DIR = os.path.join(DATA_DIR, "matters")
 TEMPLATES_DIR = os.path.join(DATA_DIR, "templates")
 RUNS_DIR = os.path.join(DATA_DIR, "runs")
 CONFIG_PATH = os.path.join(DATA_DIR, "config.json")
+
+
+def _read_json(path: str) -> dict:
+    """Read a JSON artifact, transparently decrypting if encrypted at rest."""
+    with open(path, "rb") as fh:
+        raw = fh.read()
+    return json.loads(decrypt_bytes(raw).decode("utf-8"))
+
+
+def _write_json(path: str, obj: dict) -> None:
+    """Write a JSON artifact, encrypting at rest when VERBATIM_DATA_KEY is set."""
+    raw = json.dumps(obj, indent=2).encode("utf-8")
+    with open(path, "wb") as fh:
+        fh.write(encrypt_bytes(raw))
 
 
 def _ensure_dirs() -> None:
@@ -35,17 +50,15 @@ def load_config() -> dict:
     _ensure_dirs()
     if not os.path.exists(CONFIG_PATH):
         return {"template_styles": {}}
-    with open(CONFIG_PATH, "r", encoding="utf-8") as fh:
-        try:
-            return json.load(fh)
-        except json.JSONDecodeError:
-            return {"template_styles": {}}
+    try:
+        return _read_json(CONFIG_PATH)
+    except json.JSONDecodeError:
+        return {"template_styles": {}}
 
 
 def save_config(cfg: dict) -> None:
     _ensure_dirs()
-    with open(CONFIG_PATH, "w", encoding="utf-8") as fh:
-        json.dump(cfg, fh, indent=2)
+    _write_json(CONFIG_PATH, cfg)
 
 
 def get_template_style(template_id: str) -> Optional[str]:
@@ -64,16 +77,14 @@ def set_template_style(template_id: str, style: str) -> None:
 def save_run(result: FillResult) -> None:
     _ensure_dirs()
     path = os.path.join(RUNS_DIR, f"{result.run_id}.json")
-    with open(path, "w", encoding="utf-8") as fh:
-        json.dump(result.model_dump(), fh, indent=2)
+    _write_json(path, result.model_dump())
 
 
 def load_run(run_id: str) -> Optional[FillResult]:
     path = os.path.join(RUNS_DIR, f"{run_id}.json")
     if not os.path.exists(path):
         return None
-    with open(path, "r", encoding="utf-8") as fh:
-        return FillResult(**json.load(fh))
+    return FillResult(**_read_json(path))
 
 
 def list_runs() -> List[FillResult]:
@@ -83,8 +94,7 @@ def list_runs() -> List[FillResult]:
         if not name.endswith(".json"):
             continue
         try:
-            with open(os.path.join(RUNS_DIR, name), "r", encoding="utf-8") as fh:
-                runs.append(FillResult(**json.load(fh)))
+            runs.append(FillResult(**_read_json(os.path.join(RUNS_DIR, name))))
         except Exception:
             continue
     runs.sort(key=lambda r: r.timestamp, reverse=True)
