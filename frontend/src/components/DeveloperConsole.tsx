@@ -33,6 +33,9 @@ import {
   Check,
   X,
   AlertTriangle,
+  ShieldCheck,
+  ShieldAlert,
+  UserPlus,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -41,11 +44,17 @@ import {
   TemplateInfo,
   ModelStyleStats,
   FillResult,
+  UserInfo,
+  AuditLog,
 } from "@/api/client";
 
 const STYLES = ["litigation", "transactional", "family-law", "estate", "unassigned"];
 
-const DeveloperConsole = () => {
+interface DeveloperConsoleProps {
+  currentUser: string;
+}
+
+const DeveloperConsole = ({ currentUser }: DeveloperConsoleProps) => {
   return (
     <Card className="bg-card border-border">
       <CardHeader>
@@ -56,10 +65,11 @@ const DeveloperConsole = () => {
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="models">
-          <TabsList className="grid w-full grid-cols-3 mb-6 bg-muted/40">
+          <TabsList className="grid w-full grid-cols-4 mb-6 bg-muted/40">
             <TabsTrigger value="models">Models &amp; Styles</TabsTrigger>
             <TabsTrigger value="performance">Performance</TabsTrigger>
             <TabsTrigger value="audit">Run Audit</TabsTrigger>
+            <TabsTrigger value="access">Access</TabsTrigger>
           </TabsList>
           <TabsContent value="models">
             <ModelsAndStyles />
@@ -70,9 +80,193 @@ const DeveloperConsole = () => {
           <TabsContent value="audit">
             <RunAudit />
           </TabsContent>
+          <TabsContent value="access">
+            <Access currentUser={currentUser} />
+          </TabsContent>
         </Tabs>
       </CardContent>
     </Card>
+  );
+};
+
+/* ---------------- Access: users, roles & the tamper-evident audit trail --- */
+const Access = ({ currentUser }: { currentUser: string }) => {
+  const { toast } = useToast();
+  const [users, setUsers] = useState<UserInfo[]>([]);
+  const [auditLog, setAuditLog] = useState<AuditLog | null>(null);
+  const [newName, setNewName] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newRole, setNewRole] = useState<"attorney" | "admin">("attorney");
+  const [busy, setBusy] = useState(false);
+
+  const refresh = () => {
+    api.users().then(setUsers).catch(() => setUsers([]));
+    api.auditLog().then(setAuditLog).catch(() => setAuditLog(null));
+  };
+  useEffect(refresh, []);
+
+  const addUser = async () => {
+    setBusy(true);
+    try {
+      await api.createUser(newName.trim(), newPassword, newRole);
+      toast({ title: `Created ${newRole} “${newName.trim()}”` });
+      setNewName("");
+      setNewPassword("");
+      refresh();
+    } catch (e) {
+      toast({
+        title: "Could not create user",
+        description: String(e),
+        variant: "destructive",
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleDisabled = async (u: UserInfo) => {
+    try {
+      await api.setUserState(u.username, !u.disabled);
+      refresh();
+    } catch (e) {
+      toast({ title: "Update failed", description: String(e), variant: "destructive" });
+    }
+  };
+
+  return (
+    <div className="space-y-8">
+      <section>
+        <h3 className="mb-1 text-sm font-semibold text-foreground">Firm accounts</h3>
+        <p className="mb-3 text-sm text-muted-foreground">
+          Attorneys see the Workspace and Library; admins also see this console.
+          Passwords are scrypt-hashed in a local file — no identity provider is
+          contacted.
+        </p>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>User</TableHead>
+              <TableHead>Role</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {users.map((u) => (
+              <TableRow key={u.username}>
+                <TableCell className="font-medium">{u.username}</TableCell>
+                <TableCell>
+                  <Badge variant={u.role === "admin" ? "default" : "secondary"}>
+                    {u.role}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  {u.disabled ? (
+                    <Badge variant="destructive">disabled</Badge>
+                  ) : (
+                    <Badge variant="outline">active</Badge>
+                  )}
+                </TableCell>
+                <TableCell className="text-right">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={u.username === currentUser}
+                    onClick={() => toggleDisabled(u)}
+                  >
+                    {u.disabled ? "Enable" : "Disable"}
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+
+        <div className="mt-4 flex flex-wrap items-end gap-2">
+          <div className="w-44">
+            <Input
+              placeholder="username"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+            />
+          </div>
+          <div className="w-44">
+            <Input
+              type="password"
+              placeholder="password (8+ chars)"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+            />
+          </div>
+          <Select value={newRole} onValueChange={(v) => setNewRole(v as "attorney" | "admin")}>
+            <SelectTrigger className="w-32">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="attorney">attorney</SelectItem>
+              <SelectItem value="admin">admin</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button
+            onClick={addUser}
+            disabled={busy || !newName.trim() || newPassword.length < 8}
+          >
+            <UserPlus className="mr-1 h-4 w-4" /> Add user
+          </Button>
+        </div>
+      </section>
+
+      <section>
+        <div className="mb-3 flex items-center gap-3">
+          <h3 className="text-sm font-semibold text-foreground">Audit trail</h3>
+          {auditLog &&
+            (auditLog.intact ? (
+              <span className="flex items-center gap-1 text-xs font-medium text-green-700">
+                <ShieldCheck className="h-4 w-4" /> hash chain intact
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 text-xs font-medium text-destructive">
+                <ShieldAlert className="h-4 w-4" /> TAMPERED at line {auditLog.broken_at_line}
+              </span>
+            ))}
+        </div>
+        <p className="mb-3 text-sm text-muted-foreground">
+          Every login, fill, export, upload, and admin action — each record is
+          chained to the previous one's SHA-256, so edits are detectable. Case
+          content never appears here, only identifiers.
+        </p>
+        <div className="max-h-80 overflow-y-auto rounded-md border border-border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Time</TableHead>
+                <TableHead>User</TableHead>
+                <TableHead>Action</TableHead>
+                <TableHead>Resource</TableHead>
+                <TableHead>OK</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {(auditLog?.records ?? []).map((r, i) => (
+                <TableRow key={i}>
+                  <TableCell className="whitespace-nowrap text-xs">{r.ts}</TableCell>
+                  <TableCell className="text-xs">{r.user}</TableCell>
+                  <TableCell className="text-xs font-mono">{r.action}</TableCell>
+                  <TableCell className="max-w-64 truncate text-xs">{r.resource ?? ""}</TableCell>
+                  <TableCell>
+                    {r.ok ? (
+                      <Check className="h-4 w-4 text-green-600" />
+                    ) : (
+                      <X className="h-4 w-4 text-destructive" />
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </section>
+    </div>
   );
 };
 

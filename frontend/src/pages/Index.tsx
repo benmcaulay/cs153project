@@ -3,9 +3,18 @@ import Header from "@/components/Header";
 import AttorneyWorkspace from "@/components/AttorneyWorkspace";
 import DeveloperConsole from "@/components/DeveloperConsole";
 import Library from "@/components/Library";
+import LoginPage from "@/components/LoginPage";
 import { FillProvider } from "@/components/FillContext";
-import { Scale, Wrench, FolderUp, ShieldCheck, ShieldOff } from "lucide-react";
-import { api } from "@/api/client";
+import {
+  Scale,
+  Wrench,
+  FolderUp,
+  ShieldCheck,
+  ShieldOff,
+  LogOut,
+  UserCircle2,
+} from "lucide-react";
+import { api, AuthMe } from "@/api/client";
 
 type Surface = "attorney" | "library" | "developer";
 
@@ -27,13 +36,45 @@ const SURFACE_BLURB: Record<Surface, string> = {
 const Index = () => {
   const [surface, setSurface] = useState<Surface>("attorney");
   const [ollamaUp, setOllamaUp] = useState<boolean | null>(null);
+  const [me, setMe] = useState<AuthMe | null>(null);
 
   useEffect(() => {
+    api
+      .me()
+      .then(setMe)
+      .catch(() => setMe({ authenticated: false, auth_enabled: true }));
+  }, []);
+
+  useEffect(() => {
+    if (!me?.authenticated) return;
     api
       .health()
       .then((h) => setOllamaUp(h.ollama_available))
       .catch(() => setOllamaUp(false));
-  }, []);
+  }, [me?.authenticated]);
+
+  const isAdmin = me?.role === "admin";
+
+  const logout = async () => {
+    try {
+      await api.logout();
+    } finally {
+      setSurface("attorney");
+      setMe({ authenticated: false, auth_enabled: true });
+    }
+  };
+
+  if (me === null) {
+    return <div className="min-h-screen bg-background" />;
+  }
+
+  if (!me.authenticated) {
+    return (
+      <LoginPage
+        onLogin={(user) => setMe({ authenticated: true, auth_enabled: true, ...user })}
+      />
+    );
+  }
 
   const tabBtn = (key: Surface, icon: React.ReactNode, label: string) => (
     <button
@@ -50,18 +91,39 @@ const Index = () => {
     </button>
   );
 
-  const SurfaceToggle = (
-    <div className="flex items-center rounded-lg border border-border bg-muted/40 p-1">
-      {tabBtn("attorney", <Scale className="h-4 w-4" />, "Attorney Workspace")}
-      {tabBtn("library", <FolderUp className="h-4 w-4" />, "Library")}
-      {tabBtn("developer", <Wrench className="h-4 w-4" />, "Developer Console")}
+  const HeaderRight = (
+    <div className="flex items-center gap-3">
+      <div className="flex items-center rounded-lg border border-border bg-muted/40 p-1">
+        {tabBtn("attorney", <Scale className="h-4 w-4" />, "Attorney Workspace")}
+        {tabBtn("library", <FolderUp className="h-4 w-4" />, "Library")}
+        {isAdmin && tabBtn("developer", <Wrench className="h-4 w-4" />, "Developer Console")}
+      </div>
+      {me.auth_enabled && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <span className="hidden md:flex items-center gap-1.5">
+            <UserCircle2 className="h-4 w-4" />
+            {me.username}
+            <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide">
+              {me.role}
+            </span>
+          </span>
+          <button
+            onClick={logout}
+            title="Sign out"
+            className="flex items-center gap-1 rounded-md border border-border px-2 py-1.5 text-xs font-medium hover:text-foreground"
+          >
+            <LogOut className="h-4 w-4" />
+            <span className="hidden sm:inline">Sign out</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 
   return (
     <FillProvider>
     <div className="min-h-screen bg-background">
-      <Header right={SurfaceToggle} />
+      <Header right={HeaderRight} />
 
       <div className="container mx-auto px-4 py-8">
         <div className="mb-8 flex items-start justify-between gap-4">
@@ -94,7 +156,9 @@ const Index = () => {
 
         {surface === "attorney" && <AttorneyWorkspace />}
         {surface === "library" && <Library />}
-        {surface === "developer" && <DeveloperConsole />}
+        {surface === "developer" && isAdmin && (
+          <DeveloperConsole currentUser={me.username ?? ""} />
+        )}
       </div>
     </div>
     </FillProvider>

@@ -5,7 +5,8 @@ pypdf>=4.0
 requests>=2.31
 python-multipart>=0.0.9
 pydantic>=2.0
-cryptography>=3.1          # lets pypdf open AES-encrypted PDFs (common in e-filed docs)
+cryptography>=3.1          # run-record encryption at rest (app/crypto.py); also lets
+                           # pypdf open AES-encrypted PDFs (common in e-filed docs)
 
 # Optional: OCR fallback for scanned/image PDFs (FR-1). Also requires the
 # system binaries `tesseract` (Tesseract OCR) and `poppler` (pdftoppm).
@@ -15,3 +16,6 @@ cryptography>=3.1          # lets pypdf open AES-encrypted PDFs (common in e-fil
 # Disable with VERBATIM_OCR=0.
 pytesseract>=0.3.10
 pdf2image>=1.17
+
+# Tests only: `pip install pytest httpx` (httpx powers the end-to-end
+# auth/RBAC test over FastAPI's TestClient; it is skipped if missing).

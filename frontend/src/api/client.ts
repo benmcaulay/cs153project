@@ -93,6 +93,34 @@ export interface ModelStyleStats {
   avg_inference_seconds: number;
 }
 
+export interface AuthMe {
+  authenticated: boolean;
+  auth_enabled: boolean;
+  username?: string;
+  role?: "attorney" | "admin";
+}
+
+export interface UserInfo {
+  username: string;
+  role: "attorney" | "admin";
+  disabled: boolean;
+  created_at?: string | null;
+}
+
+export interface AuditRecord {
+  ts: string;
+  user: string;
+  action: string;
+  resource?: string | null;
+  ok: boolean;
+}
+
+export interface AuditLog {
+  intact: boolean;
+  broken_at_line: number | null;
+  records: AuditRecord[];
+}
+
 const BASE = "/api";
 
 async function j<T>(res: Response): Promise<T> {
@@ -104,6 +132,36 @@ async function j<T>(res: Response): Promise<T> {
 }
 
 export const api = {
+  // ---- Authentication & access control ----
+  me: () => fetch(`${BASE}/auth/me`).then(j<AuthMe>),
+
+  login: (username: string, password: string) =>
+    fetch(`${BASE}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    }).then(j<{ username: string; role: "attorney" | "admin" }>),
+
+  logout: () => fetch(`${BASE}/auth/logout`, { method: "POST" }).then(j<{ ok: boolean }>),
+
+  users: () => fetch(`${BASE}/auth/users`).then(j<UserInfo[]>),
+
+  createUser: (username: string, password: string, role: "attorney" | "admin") =>
+    fetch(`${BASE}/auth/users`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password, role }),
+    }).then(j<UserInfo>),
+
+  setUserState: (username: string, disabled: boolean) =>
+    fetch(`${BASE}/auth/users/${encodeURIComponent(username)}/state`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ disabled }),
+    }).then(j<{ ok: boolean }>),
+
+  auditLog: () => fetch(`${BASE}/audit`).then(j<AuditLog>),
+
   health: () =>
     fetch(`${BASE}/health`).then(
       j<{ ok: boolean; ollama_available: boolean; ollama_host: string }>

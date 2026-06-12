@@ -71,6 +71,9 @@ template ({{blanks}} / [[blanks]]) ─┘                          │
 | `store.py` | Local JSON run records, style assignments, field flags | FR-12/13/16/17 |
 | `reporting.py` | Per-`(model, style)` accuracy aggregation | FR-14 |
 | `catalog.py` | Enumerate matters and templates from the local store | — |
+| `security.py` | Local accounts (scrypt), sessions, role-based access control | §13 |
+| `crypto.py` | Encryption at rest for run records (Fernet) | §13 |
+| `audit.py` | Append-only, hash-chained audit log | §13 |
 | `main.py` | FastAPI HTTP API + serves the built UI | — |
 
 ### Frontend (`frontend/`, React + Vite + Tailwind + shadcn/ui)
@@ -156,8 +159,11 @@ cd frontend && npm run build  # emits frontend/dist/
 data/
   matters/<Matter_Name>/...    # per-matter case files (sample matters included)
   templates/*.{md,txt,docx}    # firm templates with {{blanks}} (samples included)
-  runs/*.json                  # immutable run records (generated)
+  runs/*.json                  # immutable run records, encrypted at rest (generated)
   config.json                  # template→style assignments (generated)
+  users.json                   # local accounts, scrypt-hashed (generated; never commit)
+  audit.log                    # hash-chained audit trail (generated; never commit)
+  .keys/data.key               # encryption key, 0600 (generated; never commit)
 ```
 
 Two sample matters (*Smith v. Johnson*, *Estate of Williams*) and three
@@ -192,14 +198,16 @@ that limitation is stated plainly.
 
 ```bash
 pip install -r requirements.txt pytest
-pytest -q          # 21 tests
+pytest -q          # 53 tests
 ```
 
 Coverage includes the anti-hallucination contract (ungrounded values are
 downgraded, never trusted), graceful degradation when the runtime is
 unreachable/slow, Tier-2 blank detection (0 → N on a firm-style template),
-lexical retrieval fallback, `.docx` export, reporting aggregation, and the eval
-harness itself.
+lexical retrieval fallback, `.docx` export, reporting aggregation, the eval
+harness itself, and the security contract (auth on by default, role
+enforcement over the live API, run records unreadable on disk, audit-chain
+tamper detection).
 
 ## AI usage, sources & attribution
 
@@ -217,6 +225,29 @@ demo-video script is in `docs/demo-script.md`.
   to the local Ollama host. There is no telemetry.
 - Output is explicitly a **draft requiring attorney review**. Verbatim does not
   provide legal advice or exercise legal judgment.
-- The prototype intentionally omits authentication/RBAC and encryption-at-rest;
-  these are required for production and must not be exposed beyond a trusted
-  local host as-is (see `SPEC.md` §13).
+
+## Security
+
+Verbatim handles privileged case material, so access control is on by default
+(full model, deployment guidance, and roadmap: **`docs/security.md`**):
+
+- **Authentication** — local accounts with scrypt-hashed passwords
+  (`data/users.json`), HttpOnly session cookies, and a brute-force lockout.
+  First start bootstraps an `admin` account (password from
+  `VERBATIM_ADMIN_PASSWORD`, or generated and printed once). Manage users from
+  the Developer Console → *Access* tab or `python -m app.security adduser …`.
+  Disable for local demos with `VERBATIM_AUTH=0`.
+- **Role-based access control** — *attorneys* get the Workspace and Library;
+  *admins* additionally get the Developer Console (runs, flags, reports, user
+  management). Enforced server-side per endpoint, not just hidden in the UI.
+- **Encryption at rest** — run records (extracted facts, quotes, the filled
+  document) are Fernet-encrypted on disk; the key lives in `data/.keys/` (0600)
+  or `VERBATIM_DATA_KEY`. Case files stay in the firm's filesystem, where
+  full-disk encryption is the right control — `docs/security.md` explains the
+  boundary.
+- **Tamper-evident audit log** — every login, fill, export, upload, and admin
+  action is appended to a SHA-256 hash chain (`data/audit.log`). Verify with
+  `python -m app.audit verify`; admins can inspect it in the Access tab.
+- No authentication/identity provider is contacted: like inference, **auth is
+  local-only**. SSO (OIDC/SAML), per-matter access walls, and the rest of the
+  production path are laid out in `docs/security.md`.

@@ -14,5 +14,10 @@ frontend/.vite/
 # Local run records (regenerated; not source)
 data/runs/*.json
 
+# Local secrets & security state — never commit these
+data/.keys/
+data/users.json
+data/audit.log
+
 # OS
 .DS_Store

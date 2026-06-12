@@ -61,19 +61,31 @@ def set_template_style(template_id: str, style: str) -> None:
 # --------------------------------------------------------------------------- #
 # Run records (FR-16, FR-17)
 # --------------------------------------------------------------------------- #
+# Run records hold extracted facts, quotes, and the filled document — they are
+# encrypted at rest (app/crypto.py). Plaintext records from earlier versions
+# still load and are re-encrypted on the next save.
 def save_run(result: FillResult) -> None:
+    from .crypto import encrypt_bytes
+
     _ensure_dirs()
     path = os.path.join(RUNS_DIR, f"{result.run_id}.json")
-    with open(path, "w", encoding="utf-8") as fh:
-        json.dump(result.model_dump(), fh, indent=2)
+    payload = json.dumps(result.model_dump(), indent=2).encode("utf-8")
+    with open(path, "wb") as fh:
+        fh.write(encrypt_bytes(payload))
+
+
+def _read_run_file(path: str) -> FillResult:
+    from .crypto import decrypt_bytes
+
+    with open(path, "rb") as fh:
+        return FillResult(**json.loads(decrypt_bytes(fh.read()).decode("utf-8")))
 
 
 def load_run(run_id: str) -> Optional[FillResult]:
     path = os.path.join(RUNS_DIR, f"{run_id}.json")
     if not os.path.exists(path):
         return None
-    with open(path, "r", encoding="utf-8") as fh:
-        return FillResult(**json.load(fh))
+    return _read_run_file(path)
 
 
 def list_runs() -> List[FillResult]:
@@ -83,8 +95,7 @@ def list_runs() -> List[FillResult]:
         if not name.endswith(".json"):
             continue
         try:
-            with open(os.path.join(RUNS_DIR, name), "r", encoding="utf-8") as fh:
-                runs.append(FillResult(**json.load(fh)))
+            runs.append(_read_run_file(os.path.join(RUNS_DIR, name)))
         except Exception:
             continue
     runs.sort(key=lambda r: r.timestamp, reverse=True)
