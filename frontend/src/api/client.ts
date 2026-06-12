@@ -48,6 +48,7 @@ export interface FilledField {
   source_page?: number | null;
   admin_flag?: "correct" | "incorrect" | null;
   review_reason?: string | null;
+  model_reason?: string | null;
 }
 
 export interface FillResult {
@@ -59,6 +60,7 @@ export interface FillResult {
   template_name: string;
   style?: string | null;
   model: string;
+  prompt_version?: string | null;
   fields: FilledField[];
   original_text: string;
   filled_text: string;

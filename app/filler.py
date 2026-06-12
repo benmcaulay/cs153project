@@ -210,6 +210,7 @@ def fill(
         template_name=template.name,
         style=template.style,
         model=model,
+        prompt_version=prompts.PROMPT_VERSION,
         original_text=template_text,
     )
 
@@ -294,8 +295,12 @@ def fill(
         )
         if not model_filled:
             reason = "no_context" if spec.key not in fields_with_context else "model_blanked"
+            # Keep the model's own abstention reason (prompt rule 4) — "two
+            # conflicting amounts" is far more reviewable than a bare blank.
+            stated = str(item.get("review_reason") or "").strip()[:300]
             filled.append(FilledField(key=spec.key, label=spec.label, value=NEEDS_REVIEW,
-                                      found=False, review_reason=reason))
+                                      found=False, review_reason=reason,
+                                      model_reason=stated or None))
             continue
 
         # Ground the VALUE in the case file (FR-8). A model-supplied quote helps

@@ -76,6 +76,10 @@ class FilledField(BaseModel):
     # | "model_unreachable" | "no_documents"
     review_reason: Optional[str] = None
 
+    # The model's own stated reason for abstaining (prompt rule 4: e.g. a
+    # conflict between candidate values). Free text, verbatim from the model.
+    model_reason: Optional[str] = None
+
     # Administrator evaluation flag (FR-13): "correct" | "incorrect" | None
     admin_flag: Optional[str] = None
 
@@ -91,6 +95,9 @@ class FillResult(BaseModel):
     template_name: str
     style: Optional[str] = None
     model: str
+    # Which revision of the system prompt produced this run (prompts.PROMPT_VERSION).
+    # None on records predating prompt versioning.
+    prompt_version: Optional[str] = None
 
     fields: List[FilledField] = Field(default_factory=list)
 

@@ -536,7 +536,12 @@ const ResultView = ({ result }: { result: FillResult }) => {
               {!f.found && f.review_reason && REVIEW_REASONS[f.review_reason] && (
                 <div className="text-xs text-amber-700/90 flex items-start gap-1">
                   <Info className="h-3 w-3 mt-0.5 shrink-0" />
-                  <span>{REVIEW_REASONS[f.review_reason]}</span>
+                  <span>
+                    {REVIEW_REASONS[f.review_reason]}
+                    {f.model_reason && (
+                      <> Model's note: <span className="italic">“{f.model_reason}”</span></>
+                    )}
+                  </span>
                 </div>
               )}
             </div>
