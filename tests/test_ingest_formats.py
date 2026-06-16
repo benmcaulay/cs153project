@@ -190,6 +190,29 @@ def test_forwarded_eml_attachment_recurses(tmp_path):
     assert "Subject: Statement" in text   # inner headers came through too
 
 
+def test_oversized_attachment_is_skipped_but_listed(tmp_path, monkeypatch):
+    """An attachment over the size cap is named but not parsed, so one huge
+    embedded file can't stall ingest."""
+    from app import ingest
+
+    monkeypatch.setattr(ingest, "_MAX_ATTACHMENT_BYTES", 100)  # tiny cap for the test
+    big = b"OVERSIZED " * 50  # 500 bytes > 100
+    msg = EmailMessage()
+    msg["From"] = "a@b.com"
+    msg["To"] = "c@d.com"
+    msg["Subject"] = "Big file"
+    msg["Date"] = "Tue, 04 Mar 2024 09:00:00 -0800"
+    msg.set_content("See attached.")
+    msg.add_attachment(big, maintype="text", subtype="plain", filename="huge.txt")
+    p = tmp_path / "big.eml"
+    p.write_bytes(bytes(msg))
+
+    text = ingest.read_document(str(p))
+    assert "huge.txt" in text          # still listed
+    assert "OVERSIZED" not in text     # but content not extracted
+    assert "--- Attachment: huge.txt ---" not in text
+
+
 def test_upload_validation_accepts_new_types(tmp_path, monkeypatch):
     monkeypatch.setattr(catalog, "MATTERS_DIR", str(tmp_path / "matters"))
     m = catalog.create_matter("Reyes v Brightway")

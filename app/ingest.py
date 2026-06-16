@@ -18,6 +18,11 @@ SUPPORTED_EXTS = {".pdf", ".docx", ".txt", ".md", ".eml", ".xlsx"}
 # pathological (or malicious) .eml that nests itself can't recurse forever.
 _MAX_EML_DEPTH = 3
 
+# Skip extracting any single email attachment larger than this, so one oversized
+# (or hostile) embedded file can't stall a matter's ingest. The attachment is
+# still listed by name. Matches the 25 MB upload limit; override in MB.
+_MAX_ATTACHMENT_BYTES = int(os.environ.get("VERBATIM_MAX_ATTACHMENT_MB", "25")) * 1024 * 1024
+
 
 @dataclass
 class Chunk:
@@ -161,6 +166,12 @@ def _attachment_text(part, fname: str, ctype: str, depth: int) -> str:
             except Exception:
                 data = None
     if not data:
+        return ""
+    if len(data) > _MAX_ATTACHMENT_BYTES:
+        print(
+            f"[ingest] attachment {fname} ({len(data)} bytes) exceeds the "
+            f"{_MAX_ATTACHMENT_BYTES} byte cap; listed by name, content not parsed."
+        )
         return ""
 
     fd, tmp = tempfile.mkstemp(suffix=ext)
