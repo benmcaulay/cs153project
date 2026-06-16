@@ -109,6 +109,87 @@ def test_new_formats_are_supported_and_ingest_in_a_matter(tmp_path):
     assert any(d.chunks for d in docs)
 
 
+def test_eml_text_attachment_content_is_extracted(tmp_path):
+    """The fact stapled to the email — not just the attachment's name — is
+    extracted and groundable."""
+    msg = EmailMessage()
+    msg["From"] = "counsel@firm.com"
+    msg["To"] = "client@x.com"
+    msg["Subject"] = "Please review"
+    msg["Date"] = "Mon, 03 Mar 2024 10:00:00 -0800"
+    msg.set_content("See the attached exhibit.")
+    msg.add_attachment(
+        b"The agreed settlement is $123,456.",
+        maintype="text",
+        subtype="plain",
+        filename="exhibit.txt",
+    )
+    p = tmp_path / "with_attach.eml"
+    p.write_bytes(bytes(msg))
+
+    text = read_document(str(p))
+    assert "exhibit.txt" in text          # listed by name
+    assert "$123,456" in text             # AND its content pulled in
+    assert "--- Attachment: exhibit.txt ---" in text  # labeled for provenance
+
+
+def test_eml_xlsx_attachment_is_parsed(tmp_path):
+    import io
+
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    wb.active.append(["Line item", "Amount"])
+    wb.active.append(["Total", 99000])
+    buf = io.BytesIO()
+    wb.save(buf)
+
+    msg = EmailMessage()
+    msg["From"] = "a@b.com"
+    msg["To"] = "c@d.com"
+    msg["Subject"] = "Damages ledger"
+    msg["Date"] = "Tue, 04 Mar 2024 09:00:00 -0800"
+    msg.set_content("Ledger attached.")
+    msg.add_attachment(
+        buf.getvalue(),
+        maintype="application",
+        subtype="vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename="ledger.xlsx",
+    )
+    p = tmp_path / "ledger_mail.eml"
+    p.write_bytes(bytes(msg))
+
+    text = read_document(str(p))
+    assert "ledger.xlsx" in text and "99000" in text   # routed to the xlsx reader
+
+
+def test_forwarded_eml_attachment_recurses(tmp_path):
+    """A forwarded email attached as a .eml is followed one level down."""
+    inner = EmailMessage()
+    inner["From"] = "witness@x.com"
+    inner["To"] = "counsel@firm.com"
+    inner["Subject"] = "Statement"
+    inner["Date"] = "Sun, 02 Mar 2024 08:00:00 -0800"
+    inner.set_content("The accident occurred on January 5, 2024.")
+
+    outer = EmailMessage()
+    outer["From"] = "counsel@firm.com"
+    outer["To"] = "client@x.com"
+    outer["Subject"] = "Fwd: Statement"
+    outer["Date"] = "Tue, 04 Mar 2024 09:00:00 -0800"
+    outer.set_content("Forwarding the witness statement.")
+    outer.add_attachment(
+        bytes(inner), maintype="application", subtype="octet-stream", filename="forwarded.eml"
+    )
+    p = tmp_path / "fwd.eml"
+    p.write_bytes(bytes(outer))
+
+    text = read_document(str(p))
+    assert "forwarded.eml" in text
+    assert "January 5, 2024" in text      # recursed into the attached email
+    assert "Subject: Statement" in text   # inner headers came through too
+
+
 def test_upload_validation_accepts_new_types(tmp_path, monkeypatch):
     monkeypatch.setattr(catalog, "MATTERS_DIR", str(tmp_path / "matters"))
     m = catalog.create_matter("Reyes v Brightway")

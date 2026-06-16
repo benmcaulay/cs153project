@@ -14,6 +14,10 @@ from typing import List, Optional, Tuple
 
 SUPPORTED_EXTS = {".pdf", ".docx", ".txt", ".md", ".eml", ".xlsx"}
 
+# Bound how deep we follow forwarded-email-as-attachment chains, so a
+# pathological (or malicious) .eml that nests itself can't recurse forever.
+_MAX_EML_DEPTH = 3
+
 
 @dataclass
 class Chunk:
@@ -63,14 +67,16 @@ def _strip_html(html: str) -> str:
     return re.sub(r"[ \t]*\n[ \t]*", "\n", re.sub(r"[ \t]+", " ", text)).strip()
 
 
-def _read_eml(path: str) -> str:
-    """Extract an email's key headers, body text, and attachment names.
+def _read_eml(path: str, depth: int = 0) -> str:
+    """Extract an email's key headers, body text, and attachment content.
 
     Correspondence is central to a matter (a demand, a settlement offer, an
     engagement). We surface From/To/Date/Subject plus the message body so a fact
-    like a date or dollar figure stated in an email is groundable. Attachment
-    *contents* are not parsed here — their filenames are listed so the model (and
-    the attorney inspecting sources) can see one was present."""
+    like a date or dollar figure stated in an email is groundable — and we
+    recurse into supported attachments (the signed exhibit PDF, the damages
+    .xlsx, a forwarded .eml), since that is usually where the operative document
+    actually lives. Unsupported attachments (images, zips) are listed by name
+    only. The attachment's text is labeled so provenance stays meaningful."""
     import email
     from email import policy
 
@@ -104,16 +110,74 @@ def _read_eml(path: str) -> str:
         parts.append("")
         parts.append(body.strip())
 
-    attachments = [
-        part.get_filename()
-        for part in msg.walk()
-        if part.get_content_disposition() == "attachment" and part.get_filename()
-    ]
-    if attachments:
+    names: List[str] = []
+    extracted: List[str] = []
+    try:
+        attachments = list(msg.iter_attachments())
+    except Exception:
+        attachments = []
+    for part in attachments:
+        ctype = part.get_content_type()
+        fname = part.get_filename() or (
+            "(embedded email)" if ctype == "message/rfc822" else f"(unnamed {ctype})"
+        )
+        names.append(fname)
+        if depth >= _MAX_EML_DEPTH:
+            continue
+        text = _attachment_text(part, fname, ctype, depth)
+        if text and text.strip():
+            extracted.append(f"--- Attachment: {fname} ---\n{text.strip()}")
+
+    if names:
         parts.append("")
-        parts.append("Attachments: " + ", ".join(attachments))
+        parts.append("Attachments: " + ", ".join(names))
+    for block in extracted:
+        parts.append("")
+        parts.append(block)
 
     return "\n".join(parts)
+
+
+def _attachment_text(part, fname: str, ctype: str, depth: int) -> str:
+    """Extract text from a supported email attachment by writing it to a temp
+    file and routing through the normal readers — so an attached PDF even gets
+    the OCR fallback, and a forwarded .eml recurses (with the depth guard).
+    Unsupported types return '' and surface as a name only."""
+    import tempfile
+
+    ext = os.path.splitext(fname)[1].lower()
+    if ctype == "message/rfc822":
+        ext = ".eml"
+    if ext not in SUPPORTED_EXTS:
+        return ""
+
+    data = part.get_payload(decode=True)
+    if data is None and ctype == "message/rfc822":
+        # message/rfc822 parts aren't base64 leaves; serialize the embedded message.
+        payload = part.get_payload()
+        if isinstance(payload, list) and payload:
+            try:
+                data = payload[0].as_bytes()
+            except Exception:
+                data = None
+    if not data:
+        return ""
+
+    fd, tmp = tempfile.mkstemp(suffix=ext)
+    try:
+        with os.fdopen(fd, "wb") as tf:
+            tf.write(data)
+        if ext == ".eml":
+            return _read_eml(tmp, depth=depth + 1)
+        return read_document(tmp)
+    except Exception as exc:
+        print(f"[ingest] could not read attachment {fname}: {exc}")
+        return ""
+    finally:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
 
 
 def _read_xlsx(path: str) -> str:
