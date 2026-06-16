@@ -13,7 +13,6 @@ import {
   Folder,
   FolderPlus,
   FileText,
-  Upload,
   Trash2,
   X,
   Loader2,
@@ -22,7 +21,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { api, CaseInfo, TemplateInfo } from "@/api/client";
 
-const DOC_ACCEPT = ".pdf,.docx,.txt,.md";
+const DOC_ACCEPT = ".pdf,.docx,.txt,.md,.eml,.xlsx";
 const TEMPLATE_ACCEPT = ".docx,.txt,.md";
 
 const Library = () => {
@@ -120,7 +119,7 @@ const Library = () => {
           </CardTitle>
           <CardDescription>
             Create a matter, then upload its source documents (.pdf, .docx, .txt,
-            .md). Everything stays on this host.
+            .md, .eml, .xlsx). Everything stays on this host.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -184,21 +183,17 @@ const Library = () => {
                   </div>
                 )}
 
-                <label className="mt-2 inline-flex">
-                  <input
-                    type="file"
-                    multiple
-                    accept={DOC_ACCEPT}
-                    className="hidden"
-                    onChange={(e) => {
-                      uploadDocs(m.id, e.target.files);
-                      e.currentTarget.value = "";
-                    }}
-                  />
-                  <span className="inline-flex items-center gap-2 text-sm text-primary cursor-pointer hover:underline">
-                    <FilePlus2 className="h-4 w-4" /> Add files
-                  </span>
-                </label>
+                <FileDropzone
+                  accept={DOC_ACCEPT}
+                  onFiles={(files) => uploadDocs(m.id, files)}
+                  className="mt-2 py-3"
+                  label={
+                    <>
+                      <FilePlus2 className="h-4 w-4 shrink-0" /> Drag &amp; drop case
+                      files here, or click to browse
+                    </>
+                  }
+                />
               </div>
             ))}
             {matters.length === 0 && (
@@ -226,7 +221,12 @@ const Library = () => {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <TemplateDropzone onFiles={uploadTemplate} />
+          <FileDropzone
+            accept={TEMPLATE_ACCEPT}
+            onFiles={uploadTemplate}
+            className="p-6"
+            label="Drag & drop a template here, or click to browse"
+          />
 
           <div className="space-y-2">
             {templates.map((t) => (
@@ -263,11 +263,17 @@ const Library = () => {
   );
 };
 
-/* Drag-and-drop zone for template uploads. */
-const TemplateDropzone = ({
+/* Reusable drag-and-drop + click-to-browse zone for uploads (matters & templates). */
+const FileDropzone = ({
+  accept,
   onFiles,
+  label,
+  className = "",
 }: {
+  accept: string;
   onFiles: (files: FileList | null) => void;
+  label: React.ReactNode;
+  className?: string;
 }) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
@@ -286,19 +292,20 @@ const TemplateDropzone = ({
       }}
       onClick={() => inputRef.current?.click()}
       className={
-        "flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 cursor-pointer transition-colors " +
-        (over ? "border-primary bg-primary/5" : "border-border hover:bg-accent/30")
+        "flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed cursor-pointer transition-colors " +
+        (over ? "border-primary bg-primary/5" : "border-border hover:bg-accent/30") +
+        " " +
+        className
       }
     >
-      <Upload className="h-6 w-6 text-muted-foreground" />
-      <p className="text-sm text-muted-foreground text-center">
-        Drag &amp; drop a template here, or click to browse
-      </p>
+      <span className="flex items-center gap-2 text-sm text-muted-foreground text-center">
+        {label}
+      </span>
       <input
         ref={inputRef}
         type="file"
         multiple
-        accept={TEMPLATE_ACCEPT}
+        accept={accept}
         className="hidden"
         onChange={(e) => {
           onFiles(e.target.files);

@@ -1,17 +1,18 @@
 """
 Ingestion and chunking (FR-1, FR-2).
 
-Reads .pdf / .docx / .txt / .md from a per-matter folder and splits each
-document into overlapping text chunks suitable for retrieval. Parsing is
-best-effort: a single unreadable file never aborts a matter.
+Reads .pdf / .docx / .txt / .md / .eml / .xlsx from a per-matter folder and
+splits each document into overlapping text chunks suitable for retrieval.
+Parsing is best-effort: a single unreadable file never aborts a matter.
 """
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
-SUPPORTED_EXTS = {".pdf", ".docx", ".txt", ".md"}
+SUPPORTED_EXTS = {".pdf", ".docx", ".txt", ".md", ".eml", ".xlsx"}
 
 
 @dataclass
@@ -43,6 +44,98 @@ def _read_docx(path: str) -> str:
     for table in doc.tables:
         for row in table.rows:
             parts.append("\t".join(cell.text for cell in row.cells))
+    return "\n".join(parts)
+
+
+def _strip_html(html: str) -> str:
+    """Crude tag strip for the HTML body of an email that has no plain-text part."""
+    html = re.sub(r"(?is)<(script|style)\b.*?</\1>", " ", html)
+    text = re.sub(r"(?s)<[^>]+>", " ", html)
+    # collapse entities we care about and whitespace
+    text = (
+        text.replace("&nbsp;", " ")
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&#39;", "'")
+        .replace("&quot;", '"')
+    )
+    return re.sub(r"[ \t]*\n[ \t]*", "\n", re.sub(r"[ \t]+", " ", text)).strip()
+
+
+def _read_eml(path: str) -> str:
+    """Extract an email's key headers, body text, and attachment names.
+
+    Correspondence is central to a matter (a demand, a settlement offer, an
+    engagement). We surface From/To/Date/Subject plus the message body so a fact
+    like a date or dollar figure stated in an email is groundable. Attachment
+    *contents* are not parsed here — their filenames are listed so the model (and
+    the attorney inspecting sources) can see one was present."""
+    import email
+    from email import policy
+
+    with open(path, "rb") as fh:
+        msg = email.message_from_binary_file(fh, policy=policy.default)
+
+    parts: List[str] = []
+    for h in ("From", "To", "Cc", "Date", "Subject"):
+        v = msg.get(h)
+        if v:
+            parts.append(f"{h}: {v}")
+
+    body = ""
+    try:
+        chosen = msg.get_body(preferencelist=("plain", "html"))
+        if chosen is not None:
+            content = chosen.get_content()
+            if chosen.get_content_type() == "text/html":
+                content = _strip_html(content)
+            body = content
+    except Exception:
+        # Malformed MIME: fall back to the first text/plain part we can find.
+        for part in msg.walk():
+            if part.get_content_type() == "text/plain":
+                try:
+                    body = part.get_content()
+                    break
+                except Exception:
+                    continue
+    if body:
+        parts.append("")
+        parts.append(body.strip())
+
+    attachments = [
+        part.get_filename()
+        for part in msg.walk()
+        if part.get_content_disposition() == "attachment" and part.get_filename()
+    ]
+    if attachments:
+        parts.append("")
+        parts.append("Attachments: " + ", ".join(attachments))
+
+    return "\n".join(parts)
+
+
+def _read_xlsx(path: str) -> str:
+    """Flatten a spreadsheet to text, sheet by sheet, tab-separated rows.
+
+    Legal matters carry damages calculations, billing/expense ledgers, and asset
+    schedules as .xlsx. We read cached cell *values* (data_only) so a figure
+    produced by a formula is transcribable, and label each sheet so provenance
+    stays meaningful."""
+    from openpyxl import load_workbook
+
+    wb = load_workbook(path, read_only=True, data_only=True)
+    parts: List[str] = []
+    try:
+        for ws in wb.worksheets:
+            parts.append(f"[Sheet: {ws.title}]")
+            for row in ws.iter_rows(values_only=True):
+                cells = ["" if c is None else str(c) for c in row]
+                if any(c.strip() for c in cells):
+                    parts.append("\t".join(cells))
+    finally:
+        wb.close()
     return "\n".join(parts)
 
 
@@ -199,6 +292,10 @@ def read_document(path: str) -> str:
         return _read_docx(path)
     if ext in (".txt", ".md"):
         return _read_txt(path)
+    if ext == ".eml":
+        return _read_eml(path)
+    if ext == ".xlsx":
+        return _read_xlsx(path)
     raise ValueError(f"unsupported extension: {ext}")
 
 
@@ -213,6 +310,10 @@ def read_document_pages(path: str) -> List[Tuple[Optional[int], str]]:
         return [(None, _read_docx(path))]
     if ext in (".txt", ".md"):
         return [(None, _read_txt(path))]
+    if ext == ".eml":
+        return [(None, _read_eml(path))]
+    if ext == ".xlsx":
+        return [(None, _read_xlsx(path))]
     raise ValueError(f"unsupported extension: {ext}")
 
 

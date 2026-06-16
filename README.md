@@ -44,7 +44,7 @@ leaves the machine.
 ## Architecture
 
 ```
-case files (.pdf/.docx/.txt/.md)  ─┐
+case files (.pdf/.docx/.txt/.md/.eml/.xlsx) ─┐
                                     ├─ ingest + chunk ─ retrieve (dense | lexical)
 template ({{blanks}} / [[blanks]]) ─┘                          │
                                                                ▼
@@ -61,7 +61,7 @@ template ({{blanks}} / [[blanks]]) ─┘                          │
 |--------|----------------|-----|
 | `models.py` | Pydantic data model (`CaseInfo`, `TemplateInfo`, `FieldSpec`, `FilledField`, `FillResult`, …) | §11 |
 | `prompts.py` | The grounding system prompt — the primary artifact governing model behavior | §9 |
-| `ingest.py` | Read pdf/docx/txt/md, overlapping chunking | FR-1, FR-2 |
+| `ingest.py` | Read pdf/docx/txt/md/eml/xlsx, overlapping chunking | FR-1, FR-2 |
 | `retrieval.py` | Dense (Ollama embeddings) retrieval with pure-Python TF-IDF fallback | FR-3 |
 | `templates.py` | Detect `{{key}}` / `[[key]]` / `{{key \| instruction}}`, labels, fill; `prepare_template` normalization | FR-4, FR-5 |
 | `blank_detect.py` | Tier-2 deterministic detection of real-world blank conventions (underscores, brackets, checkboxes, `XXX`, `label :`, highlighted runs, empty table grids) → normalize to canonical markup | FR-5.1, FR-5.2, FR-5.3 |
