@@ -325,17 +325,36 @@ def fill(
 
     run.fields = filled
     run.message = _diagnostic_message(filled, empty_docs, run.retrieval_mode) or None
-    # If the extractor produced output but we couldn't use any of it, show a
-    # snippet so the mismatch is visible rather than a silent 0/N.
+    # If the extractor produced output but we couldn't use any of it, explain why
+    # rather than leaving a silent 0/N. Distinguish the common context-window
+    # overflow (empty/stub JSON, or a prompt too big even for the largest window)
+    # from a model that genuinely rambled off-schema.
     if not any(f.found for f in filled):
-        if run.raw_model_output:
-            snippet = re.sub(r"\s+", " ", run.raw_model_output).strip()[:240]
-            run.message = (run.message or "") + f" Raw model output (first 240 chars): {snippet}"
-        elif run.raw_model_output is None:
+        raw = run.raw_model_output
+        # A "stub" is an empty response or one that is only JSON punctuation
+        # ("{", "{}", "{ }") — the signature of a truncated/overflowed prompt.
+        is_stub = raw is None or len(re.sub(r"[\s{}\[\],:\"']", "", raw)) == 0
+        sys_p = prompts.SYSTEM_PROMPT
+        usr_p = prompts.build_user_prompt(template.fields, passages)
+        est = ollama_client.estimate_prompt_tokens(sys_p, usr_p)
+        ctx = ollama_client.adaptive_num_ctx(sys_p, usr_p)
+        too_big = est + ollama_client._CTX_OUTPUT_HEADROOM >= ctx
+        if too_big:
             run.message = (run.message or "") + (
-                " The model returned an empty response — the prompt may exceed its "
-                "context window. Raise VERBATIM_NUM_CTX (or try a smaller matter)."
+                f" The prompt (~{est} tokens) is too large for the model's context "
+                f"window (auto-sized to its {ctx}-token maximum). Reduce the documents "
+                f"in this matter, or raise VERBATIM_NUM_CTX_MAX if the machine has the RAM."
             )
+        elif is_stub:
+            run.message = (run.message or "") + (
+                f" The model returned no usable output (near-empty JSON). It likely hit "
+                f"its context limit or stumbled; the window was auto-sized to {ctx} tokens "
+                f"for an ~{est}-token prompt. Try re-running, a different model, or raising "
+                f"VERBATIM_NUM_CTX_MAX."
+            )
+        elif raw:
+            snippet = re.sub(r"\s+", " ", raw).strip()[:240]
+            run.message = (run.message or "") + f" Raw model output (first 240 chars): {snippet}"
     run.filled_text = _assemble(template_text, filled, template.fields)
     return run.recount()
 

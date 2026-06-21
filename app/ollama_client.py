@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 import time
 from typing import List, Optional, Tuple
 
@@ -22,9 +23,32 @@ OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 # larger models / CPU-bound machines. Generous default; override as needed.
 DEFAULT_TIMEOUT = float(os.environ.get("VERBATIM_OLLAMA_TIMEOUT", "300"))
 # Ollama's default context window (often 4096) silently truncates a multi-document
-# prompt, after which the model returns empty/garbage. A larger window lets the
-# whole grounded prompt through. Raise for big matters; lower to save memory.
+# prompt, after which the model returns empty/garbage. Verbatim auto-sizes the
+# window per request between NUM_CTX (floor) and NUM_CTX_MAX (ceiling) from the
+# estimated prompt size — so a big matter just works without hand-tuning, while a
+# small one doesn't waste memory. Override either bound; lower the max to save RAM.
 NUM_CTX = int(os.environ.get("VERBATIM_NUM_CTX", "8192"))
+NUM_CTX_MAX = int(os.environ.get("VERBATIM_NUM_CTX_MAX", "32768"))
+# Tokens reserved within the window for the model's own JSON answer.
+_CTX_OUTPUT_HEADROOM = int(os.environ.get("VERBATIM_NUM_CTX_HEADROOM", "2048"))
+
+
+def estimate_prompt_tokens(system: str, prompt: str) -> int:
+    """Rough token estimate (~4 chars/token for English + JSON). Used only to
+    size the context window and to explain an overflow — not for billing."""
+    return (len(system) + len(prompt)) // 4
+
+
+def adaptive_num_ctx(system: str, prompt: str) -> int:
+    """Pick a context window that fits the prompt plus output headroom, scaling
+    from the NUM_CTX floor up to NUM_CTX_MAX in power-of-two steps. Ollama clamps
+    the value to the model's real maximum, so over-asking is safe."""
+    needed = estimate_prompt_tokens(system, prompt) + _CTX_OUTPUT_HEADROOM
+    ctx = NUM_CTX
+    while ctx < needed and ctx < NUM_CTX_MAX:
+        ctx *= 2
+    # Respect an explicit floor even if it is set above the ceiling.
+    return max(NUM_CTX, min(ctx, NUM_CTX_MAX))
 
 
 class OllamaUnavailable(RuntimeError):
@@ -148,6 +172,12 @@ def generate_json(
     Returns (parsed_json, elapsed_seconds, raw_text). Raises OllamaUnavailable if
     the runtime cannot be reached.
     """
+    num_ctx = adaptive_num_ctx(system, prompt)
+    print(
+        f"[ollama] model={model} num_ctx={num_ctx} "
+        f"(~{estimate_prompt_tokens(system, prompt)} est. prompt tokens)",
+        file=sys.stderr,
+    )
     payload = {
         "model": model,
         "system": system,
@@ -157,7 +187,7 @@ def generate_json(
         # Reasoning models (e.g. Qwen3) otherwise emit <think> blocks that wreck
         # JSON-mode output; ask the runtime to disable thinking where supported.
         "think": False,
-        "options": {"temperature": temperature, "num_ctx": NUM_CTX},
+        "options": {"temperature": temperature, "num_ctx": num_ctx},
     }
     start = time.perf_counter()
     try:

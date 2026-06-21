@@ -133,8 +133,13 @@ Without Ollama running, the app still works end-to-end — every field returns a
 
 **Large matters:** a multi-document matter can exceed Ollama's default context
 window, after which the model returns nothing and every field reads as review.
-Verbatim requests `num_ctx=8192` by default; raise it for big matters with
-`VERBATIM_NUM_CTX` (more memory) or use a smaller matter.
+Verbatim **auto-sizes** the window per fill from the estimated prompt size,
+scaling from `VERBATIM_NUM_CTX` (floor, default 8192) up to
+`VERBATIM_NUM_CTX_MAX` (ceiling, default 32768) — so big matters just work
+without tuning, and small ones don't waste memory. Lower the ceiling on a
+RAM-constrained machine; raise it for very large matters. If a matter is too big
+even at the ceiling, the fill diagnostic says so explicitly (with the estimated
+token count) rather than failing silently.
 
 ### 3. Frontend
 

@@ -157,3 +157,39 @@ def test_empty_documents_are_flagged(tmp_path, monkeypatch):
     assert run.status == "error"
     assert "no readable text" in (run.message or "")
     assert all(f.review_reason == "no_documents" for f in run.fields)
+
+
+def test_stub_response_explains_context_window_not_just_raw(tmp_path, monkeypatch):
+    """A near-empty JSON stub ('{') is the signature of a truncated/overflowed
+    prompt — the diagnostic should say so, not just print the bare '{'."""
+    def fake(model, system, prompt, temperature=0.0):
+        return ({"fields": []}, 0.5, "{")
+
+    run = _run_with(tmp_path, monkeypatch, fake)
+    assert run.blanks_filled == 0
+    msg = run.message or ""
+    assert "context" in msg.lower()
+    assert "VERBATIM_NUM_CTX" in msg
+    # it must NOT degrade to the cryptic raw-snippet branch for a stub
+    assert "Raw model output (first 240 chars): {" not in msg
+
+
+def test_rambling_response_still_shows_raw_snippet(tmp_path, monkeypatch):
+    """A substantive but off-schema response keeps the raw-snippet diagnostic
+    (this is the non-overflow case and must not be misclassified)."""
+    def fake(model, system, prompt, temperature=0.0):
+        return ({"fields": []}, 0.5, "the model rambled and produced no usable JSON here")
+
+    run = _run_with(tmp_path, monkeypatch, fake)
+    assert "Raw model output" in (run.message or "")
+
+
+def test_adaptive_num_ctx_scales_and_clamps(monkeypatch):
+    # Floor for a small prompt; powers-of-two up; clamped to the configured max.
+    monkeypatch.setattr(ollama_client, "NUM_CTX", 8192)
+    monkeypatch.setattr(ollama_client, "NUM_CTX_MAX", 32768)
+    assert ollama_client.adaptive_num_ctx("sys", "tiny") == 8192
+    big = "x" * (40000 * 4)  # ~40k tokens of prompt
+    assert ollama_client.adaptive_num_ctx("sys", big) == 32768  # clamped to max
+    mid = "x" * (10000 * 4)  # ~10k tokens -> next step up from 8192
+    assert ollama_client.adaptive_num_ctx("sys", mid) == 16384
