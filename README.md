@@ -256,3 +256,4 @@ Verbatim handles privileged case material, so access control is on by default
 - No authentication/identity provider is contacted: like inference, **auth is
   local-only**. SSO (OIDC/SAML), per-matter access walls, and the rest of the
   production path are laid out in `docs/security.md`.
+# CopperSkyAgents
