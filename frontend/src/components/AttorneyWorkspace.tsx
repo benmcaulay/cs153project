@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -382,6 +382,23 @@ const REVIEW_REASONS: Record<string, string> = {
 
 const ResultView = ({ result }: { result: FillResult }) => {
   const incomplete = result.status === "ok" && result.blanks_filled < result.blanks_total;
+
+  // Linking the document to its citations: clicking a value (or review marker)
+  // scrolls to the matching Provenance entry and briefly flashes it.
+  const [activeKey, setActiveKey] = useState<string | null>(null);
+  const flashTimer = useRef<ReturnType<typeof setTimeout>>();
+  const navigateToProvenance = useCallback((key: string) => {
+    setActiveKey(key);
+    document
+      .getElementById(`prov-${key}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (flashTimer.current) clearTimeout(flashTimer.current);
+    flashTimer.current = setTimeout(() => setActiveKey(null), 1600);
+  }, []);
+  useEffect(() => () => {
+    if (flashTimer.current) clearTimeout(flashTimer.current);
+  }, []);
+
   return (
     <>
       {/* Why everything is for review, when inference didn't complete */}
@@ -482,7 +499,7 @@ const ResultView = ({ result }: { result: FillResult }) => {
         </CardHeader>
         <CardContent>
           <div className="bg-muted/20 rounded-lg p-5 max-h-[28rem] overflow-y-auto border border-border">
-            <FilledDocument result={result} />
+            <FilledDocument result={result} onCite={navigateToProvenance} />
           </div>
         </CardContent>
       </Card>
@@ -496,17 +513,30 @@ const ResultView = ({ result }: { result: FillResult }) => {
           </CardTitle>
           <CardDescription>
             Every transcribed value carries a verbatim supporting quote from the
-            case file. Confidence is an advisory model self-report.
+            case file. Confidence is an advisory model self-report. Click a{" "}
+            <span className="text-primary font-medium">value [n]</span> in the
+            document above to jump to its citation here.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
-          {result.fields.map((f) => (
+          {result.fields.map((f, i) => (
             <div
               key={f.key}
-              className="rounded-lg border border-border p-3 flex flex-col gap-1"
+              id={`prov-${f.key}`}
+              className={
+                "rounded-lg border p-3 flex flex-col gap-1 scroll-mt-24 transition-shadow duration-300 " +
+                (activeKey === f.key
+                  ? "border-primary ring-2 ring-primary/40 bg-primary/5"
+                  : "border-border")
+              }
             >
               <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium text-foreground">{f.label}</span>
+                <span className="text-sm font-medium text-foreground flex items-center gap-2">
+                  <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-[0.7rem] font-semibold tabular-nums text-muted-foreground">
+                    {i + 1}
+                  </span>
+                  {f.label}
+                </span>
                 {f.found ? (
                   <div className="flex items-center gap-2">
                     {f.confidence != null && (
