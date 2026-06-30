@@ -68,13 +68,38 @@ class User:
 
 
 # --------------------------------------------------------------------------- #
-# Password hashing (stdlib scrypt)
+# Password hashing (scrypt)
 # --------------------------------------------------------------------------- #
+_SCRYPT_DKLEN = 64
+
+
+def _scrypt(password: bytes, salt: bytes) -> bytes:
+    """Derive a scrypt digest, preferring stdlib but falling back gracefully.
+
+    ``hashlib.scrypt`` requires the interpreter to be linked against OpenSSL
+    (>= 1.1). macOS' system Python links LibreSSL, which omits scrypt, so the
+    attribute is missing (or raises). In that case we use the ``cryptography``
+    package's Scrypt KDF — already a dependency — with identical parameters.
+    Both implement standard scrypt, so the output is interchangeable and stored
+    hashes remain portable across either path.
+    """
+    if hasattr(hashlib, "scrypt"):
+        try:
+            return hashlib.scrypt(
+                password, salt=salt, n=_SCRYPT_N, r=_SCRYPT_R, p=_SCRYPT_P, dklen=_SCRYPT_DKLEN
+            )
+        except (ValueError, OSError, NotImplementedError):
+            pass  # present but unsupported by the linked SSL library
+    from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
+
+    return Scrypt(salt=salt, length=_SCRYPT_DKLEN, n=_SCRYPT_N, r=_SCRYPT_R, p=_SCRYPT_P).derive(
+        password
+    )
+
+
 def hash_password(password: str, salt: Optional[bytes] = None) -> dict:
     salt = salt or secrets.token_bytes(16)
-    digest = hashlib.scrypt(
-        password.encode("utf-8"), salt=salt, n=_SCRYPT_N, r=_SCRYPT_R, p=_SCRYPT_P
-    )
+    digest = _scrypt(password.encode("utf-8"), salt)
     return {"salt": salt.hex(), "hash": digest.hex()}
 
 
@@ -84,9 +109,7 @@ def verify_password(password: str, record: dict) -> bool:
         expected = bytes.fromhex(record["hash"])
     except (KeyError, ValueError):
         return False
-    digest = hashlib.scrypt(
-        password.encode("utf-8"), salt=salt, n=_SCRYPT_N, r=_SCRYPT_R, p=_SCRYPT_P
-    )
+    digest = _scrypt(password.encode("utf-8"), salt)
     return hmac.compare_digest(digest, expected)
 
 
